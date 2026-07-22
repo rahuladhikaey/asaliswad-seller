@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	--background: #FAF7F0;
+	--foreground: #0A0F0D;
+	--primary: #059669;
+	--secondary: #065F46;
+	--accent: #D4A24E;
+	--background-fresh: #C9E8C4;
+	--text-primary: #0A0F0D;
+	--text-secondary: #4A524D;
+	--text-muted: #8A9490;
+	--text-disabled: #C2CAC6;
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-primary: var(--primary);
+	--color-secondary: var(--secondary);
+	--color-accent: var(--accent);
+	--color-background-fresh: var(--background-fresh);
+	--color-text-primary: var(--text-primary);
+	--color-text-secondary: var(--text-secondary);
+	--color-text-muted: var(--text-muted);
+	--color-text-disabled: var(--text-disabled);
+	--font-sans: var(--font-outfit);
+	--font-mono: var(--font-geist-mono);
+}
+
+.dark {
+	--background: #0A0F0D;
+	--foreground: #FAF7F0;
+	--background-fresh: #1F2A25;
+	--text-primary: #FAF7F0;
+	--text-secondary: #B8C0BB;
+	--text-muted: #6B756F;
+	--text-disabled: #3E453F;
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
+}
