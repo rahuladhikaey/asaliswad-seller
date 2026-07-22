@@ -122,6 +122,7 @@ export default function SellerRegisterPage() {
 
       // 2. Create entry in sellers table with status: pending
       const sellerRecord = {
+        id: sellerId,
         user_id: sellerId,
         business_name: businessName.trim(),
         owner_name: ownerName.trim(),
@@ -133,6 +134,7 @@ export default function SellerRegisterPage() {
         state: state.trim(),
         pincode: pincode.trim(),
         status: "pending",
+        created_at: new Date().toISOString(),
       };
 
       const { error: sellerError } = await supabase.from("sellers").insert([sellerRecord]);
