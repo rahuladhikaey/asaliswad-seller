@@ -41,6 +41,46 @@ export default function SellerProducts() {
     packagesText: "",
   });
 
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [imageError, setImageError] = useState<string>("");
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError("");
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    if (uploadedImages.length + files.length > 2) {
+      setImageError("❌ You can upload a maximum of 2 images.");
+      return;
+    }
+
+    for (const file of files) {
+      if (file.size > 100 * 1024) {
+        setImageError(`❌ File "${file.name}" is ${(file.size / 1024).toFixed(1)} KB. Maximum allowed size is 100 KB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const base64Str = event.target.result as string;
+          setUploadedImages((prev) => {
+            const nextImages = [...prev, base64Str].slice(0, 2);
+            setForm((f) => ({ ...f, image_url: nextImages[0] || "" }));
+            return nextImages;
+          });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const updated = uploadedImages.filter((_, i) => i !== index);
+    setUploadedImages(updated);
+    setForm((f) => ({ ...f, image_url: updated[0] || "" }));
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -77,6 +117,8 @@ export default function SellerProducts() {
 
   const openAddModal = () => {
     setEditingProduct(null);
+    setUploadedImages([]);
+    setImageError("");
     setForm({
       name: "",
       price: "",
@@ -98,6 +140,8 @@ export default function SellerProducts() {
 
   const openEditModal = (product: Product) => {
     setEditingProduct(product);
+    setUploadedImages(product.image_url ? [product.image_url] : []);
+    setImageError("");
     
     // Format text areas
     const offersText = (product.offers || []).join("\n");
@@ -431,14 +475,77 @@ export default function SellerProducts() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Image URL</label>
-                    <input
-                      type="text"
-                      value={form.image_url}
-                      onChange={e => setForm({...form, image_url: e.target.value})}
-                      placeholder="Paste image URL here"
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
-                    />
+                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5 flex items-center justify-between">
+                      <span>Product Images (Max 2 Images, ≤ 100 KB each)</span>
+                      <span className="text-[10px] text-primary font-bold">({uploadedImages.length}/2 Uploaded)</span>
+                    </label>
+
+                    {/* Image Thumbnail Previews */}
+                    {uploadedImages.length > 0 && (
+                      <div className="flex items-center gap-3 mb-2.5">
+                        {uploadedImages.map((imgSrc, idx) => (
+                          <div key={idx} className="relative h-20 w-20 rounded-2xl overflow-hidden border border-foreground/15 group shadow-sm bg-foreground/[0.02]">
+                            <img src={imgSrc} alt={`Uploaded ${idx + 1}`} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removeImage(idx)}
+                              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-black shadow hover:scale-110 transition-transform"
+                            >
+                              ✕
+                            </button>
+                            <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded font-black">
+                              Img {idx + 1}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Drag & Drop File Upload Zone */}
+                    {uploadedImages.length < 2 && (
+                      <div className="relative border-2 border-dashed border-foreground/20 hover:border-primary rounded-2xl p-4 text-center cursor-pointer transition-colors bg-foreground/[0.01]">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleImageUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <Upload size={22} className="text-primary mb-1" />
+                          <span className="text-xs font-bold text-foreground">
+                            Upload Image File (Max 2 images, ≤ 100 KB)
+                          </span>
+                          <span className="text-[10px] font-semibold text-text-muted">
+                            PNG, JPG, WEBP formats supported
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Error Alert */}
+                    {imageError && (
+                      <p className="text-xs font-bold text-red-500 mt-1.5 animate-pulse">
+                        {imageError}
+                      </p>
+                    )}
+
+                    {/* URL Input Fallback */}
+                    <div className="mt-2.5">
+                      <label className="text-[10px] font-bold text-text-muted block mb-1">Or paste image URL:</label>
+                      <input
+                        type="text"
+                        value={form.image_url}
+                        onChange={e => {
+                          setForm({...form, image_url: e.target.value});
+                          if (e.target.value && !uploadedImages.includes(e.target.value)) {
+                            setUploadedImages([e.target.value, ...uploadedImages].slice(0, 2));
+                          }
+                        }}
+                        placeholder="Paste image URL here..."
+                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-2.5 text-xs font-bold outline-none focus:border-primary"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid gap-4 grid-cols-3">
