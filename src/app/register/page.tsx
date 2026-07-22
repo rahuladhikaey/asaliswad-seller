@@ -10,7 +10,7 @@ import { CheckCircle2, Building2, MapPin, KeyRound, ArrowRight } from "lucide-re
 export default function SellerRegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState<"info" | "address" | "otp" | "submitted">("info");
-  
+
   // Business Info
   const [businessName, setBusinessName] = useState("");
   const [ownerName, setOwnerName] = useState("");
