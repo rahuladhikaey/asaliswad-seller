@@ -97,6 +97,7 @@ export default function SellerRegisterPage() {
           options: {
             data: {
               full_name: ownerName,
+              business_name: businessName,
               role: "seller",
               phone: mobileNumber,
             },
