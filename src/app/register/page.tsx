@@ -134,7 +134,7 @@ export default function SellerRegisterPage() {
         city: city.trim(),
         state: state.trim(),
         pincode: pincode.trim(),
-        status: "pending",
+        status: "approved",
         created_at: new Date().toISOString(),
       };
 
@@ -459,27 +459,27 @@ export default function SellerRegisterPage() {
             </form>
           )}
 
-          {/* STEP 4: SUBMITTED SUCCESS / PENDING STATUS */}
+          {/* STEP 4: SUBMITTED SUCCESS / ACTIVE APPROVED STATUS */}
           {step === "submitted" && (
             <div className="text-center py-6 space-y-4">
-              <div className="mx-auto h-20 w-20 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shadow-lg">
+              <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-lg">
                 <CheckCircle2 size={40} />
               </div>
               <h2 className="text-2xl font-black tracking-tight">
-                Registration Submitted!
+                Registration Successful!
               </h2>
               <p className="text-sm font-bold text-text-secondary max-w-md mx-auto leading-relaxed">
-                Your merchant application has been successfully submitted and is currently in <span className="text-amber-600 dark:text-amber-400 font-black">Pending Verification</span> status.
+                Your merchant account is now <span className="text-emerald-600 dark:text-emerald-400 font-black">Active & Approved</span>. You can log into your seller portal immediately.
               </p>
               <div className="rounded-2xl bg-foreground/[0.03] p-4 text-xs text-text-muted font-semibold max-w-md mx-auto">
-                Super Admin will verify your business details. Once approved, your seller dashboard will be activated immediately.
+                All merchant features, product listing tools, and inventory dashboards are unlocked for your account.
               </div>
               <div className="pt-4">
                 <Link
                   href="/"
                   className="inline-flex h-12 items-center justify-center px-8 rounded-2xl bg-primary text-white text-xs font-black uppercase tracking-wider shadow-lg hover:opacity-90"
                 >
-                  Return to Login
+                  Proceed to Login
                 </Link>
               </div>
             </div>
