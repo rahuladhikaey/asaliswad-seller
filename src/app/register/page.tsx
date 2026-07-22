@@ -146,7 +146,7 @@ export default function SellerRegisterPage() {
       // Also persist pending seller application locally for offline/mock backup
       try {
         const existingLocal = JSON.parse(localStorage.getItem("asali_swad_pending_sellers") || "[]");
-        existingLocal.push({ id: sellerId, ...sellerRecord, created_at: new Date().toISOString() });
+        existingLocal.push({ ...sellerRecord });
         localStorage.setItem("asali_swad_pending_sellers", JSON.stringify(existingLocal));
       } catch (e) {
         console.warn("Could not save to localStorage:", e);
