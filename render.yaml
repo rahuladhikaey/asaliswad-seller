@@ -1,0 +1,18 @@
+# Render Account 2 Blueprint - Seller Merchant Panel
+# Target Domain: seller.asaliswad.com
+
+services:
+  - type: web
+    name: asaliswad-seller-panel
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.x
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://api.asaliswad.com
+      - key: NEXT_PUBLIC_API_URL
+        value: https://api.asaliswad.com
