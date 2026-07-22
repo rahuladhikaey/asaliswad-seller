@@ -17,6 +17,6 @@ export const apiService = {
   updateOrderStatus: (id: string | number, statusData: any) => apiFetch(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(statusData) }),
 
   // Support & Pickup Locations
-  getPickupLocations: (sellerId: string) => apiFetch(`/api/sellers/pickup-locations/${sellerId}`),
-  createSupportTicket: (ticketData: any) => apiFetch('/api/sellers/support-tickets', { method: 'POST', body: JSON.stringify(ticketData) }),
+  // Media Upload (Cloudinary CDN -> Supabase B)
+  uploadProductImage: (imageBase64: string, fileName?: string) => apiFetch('/api/uploads/seller-product-image', { method: 'POST', body: JSON.stringify({ imageBase64, fileName }) }),
 };
