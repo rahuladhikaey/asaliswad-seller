@@ -34,6 +34,27 @@ export default function SellerRegisterPage() {
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
 
+  const parseErrorMsg = (err: any): string => {
+    if (!err) return "";
+    if (typeof err === "string") {
+      const trimmed = err.trim();
+      if (!trimmed || trimmed === "{}" || trimmed === "[object Object]" || trimmed === "null") {
+        return "Registration failed. Please check your inputs and try again.";
+      }
+      return trimmed;
+    }
+    if (err.message && typeof err.message === "string") {
+      const msg = err.message.trim();
+      if (msg && msg !== "{}" && msg !== "[object Object]") {
+        return msg;
+      }
+    }
+    if (err.error_description && typeof err.error_description === "string") {
+      return err.error_description;
+    }
+    return "An error occurred during registration. Please try again.";
+  };
+
   const handleSendOtp = async () => {
     setError("");
     setLoading(true);
@@ -44,7 +65,7 @@ export default function SellerRegisterPage() {
       setInfoMessage(`Demo OTP Code generated: ${code}`);
       setStep("otp");
     } catch (err: any) {
-      setError(err?.message || "Failed to send OTP.");
+      setError(parseErrorMsg(err) || "Failed to send OTP.");
     }
     setLoading(false);
   };
@@ -74,7 +95,7 @@ export default function SellerRegisterPage() {
       });
 
       if (authError) {
-        setError(authError.message);
+        setError(parseErrorMsg(authError));
         setLoading(false);
         return;
       }
@@ -120,7 +141,7 @@ export default function SellerRegisterPage() {
 
       setStep("submitted");
     } catch (err: any) {
-      setError(err?.message || "An unexpected error occurred during registration.");
+      setError(parseErrorMsg(err));
     }
     setLoading(false);
   };
@@ -162,7 +183,7 @@ export default function SellerRegisterPage() {
             </div>
           )}
 
-          {error && (
+          {error && error.trim() !== "" && error.trim() !== "{}" && error.trim() !== "[object Object]" && (
             <div className="mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 border border-rose-100/50 dark:border-rose-900/30">
               <p className="text-xs font-bold text-rose-700 dark:text-rose-400 leading-snug">
                 {error}
@@ -379,7 +400,10 @@ export default function SellerRegisterPage() {
                   maxLength={6}
                   placeholder="Enter 6-digit OTP"
                   value={otpInput}
-                  onChange={(e) => setOtpInput(e.target.value)}
+                  onChange={(e) => {
+                    setOtpInput(e.target.value);
+                    if (error) setError("");
+                  }}
                   className="w-full text-center tracking-[0.5em] rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-4 text-xl font-black outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
                 />
               </div>
