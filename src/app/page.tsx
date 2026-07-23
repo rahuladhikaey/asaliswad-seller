@@ -4,7 +4,6 @@ import { useEffect, useState, Suspense } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { DarkModeToggle } from "@/components/DarkModeToggle";
 
 function LoginContent() {
   const router = useRouter();
@@ -50,7 +49,6 @@ function LoginContent() {
         return;
       }
 
-      // Check seller profile status from DB
       const { data: sellerData } = await supabase
         .from("sellers")
         .select("status, rejection_reason")
@@ -87,45 +85,52 @@ function LoginContent() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-[3rem] bg-foreground/[0.05] p-8 md:p-12 backdrop-blur-xl border border-foreground/[0.08] shadow-2xl flex flex-col items-center">
-        <div className="mb-6 transition-transform hover:scale-110 duration-500">
-          <div className="h-20 w-20 rounded-full bg-primary flex items-center justify-center text-white text-2xl font-black shadow-lg border-4 border-white dark:border-slate-800">
+      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-8 shadow-xl flex flex-col items-center">
+        <div className="mb-6">
+          <div className="h-16 w-16 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xl font-bold border border-slate-700 shadow-md">
             AS
           </div>
         </div>
 
         <div className="text-center mb-8">
-          <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
             Merchant Portal
           </span>
-          <h1 className="mt-2 text-2xl md:text-3xl font-black tracking-tight">
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">
             Seller Login
           </h1>
-          <p className="mt-2 text-xs font-bold text-text-secondary">
+          <p className="mt-1 text-xs text-slate-400">
             Manage your pantry products, inventory & orders.
           </p>
         </div>
 
-        <form className="w-full space-y-5" onSubmit={handleLogin}>
+        <form className="w-full space-y-4" onSubmit={handleLogin}>
           <div className="space-y-4">
-            <div className="group relative">
+            <div className="space-y-1 text-left">
+              <label className="block text-xs font-semibold text-slate-300">
+                Email Address
+              </label>
               <input
                 type="email"
                 required
-                placeholder="Email Address"
+                placeholder="seller@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-6 py-4 text-sm font-bold outline-none transition-all placeholder:text-text-muted focus:border-primary focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-primary/5"
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm font-medium text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
               />
             </div>
-            <div className="group relative">
+
+            <div className="space-y-1 text-left">
+              <label className="block text-xs font-semibold text-slate-300">
+                Password
+              </label>
               <input
                 type="password"
                 required
-                placeholder="Password"
+                placeholder="••••••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-6 py-4 text-sm font-bold outline-none transition-all placeholder:text-text-muted focus:border-primary focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-primary/5"
+                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm font-medium text-white outline-none placeholder:text-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
               />
             </div>
           </div>
@@ -133,50 +138,46 @@ function LoginContent() {
           <div className="flex justify-end">
             <Link
               href="/forgot-password"
-              className="text-xs font-bold text-primary hover:underline"
+              className="text-xs font-medium text-emerald-400 hover:underline"
             >
               Forgot Password?
             </Link>
           </div>
 
           {error && (
-            <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 border border-rose-100/50 dark:border-rose-900/30">
-              <p className="text-xs font-bold text-rose-700 dark:text-rose-400 leading-snug">
-                {error}
-              </p>
+            <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800/80 text-xs font-medium text-rose-300">
+              {error}
             </div>
           )}
 
           {statusMessage && (
-            <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/30 p-4 border border-amber-100/50 dark:border-amber-900/30">
-              <p className="text-xs font-bold text-amber-700 dark:text-amber-400 leading-snug">
-                {statusMessage}
-              </p>
+            <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-800/80 text-xs font-medium text-amber-300">
+              {statusMessage}
             </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="flex h-14 w-full items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-600/20 transition-all duration-300 hover:opacity-[0.85] active:scale-95 disabled:opacity-50"
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer shadow-md"
           >
-            {loading ? "Authenticating..." : "Sign In ✨"}
+            {loading ? "Authenticating..." : "Sign In"}
           </button>
         </form>
 
-        <div className="mt-8 border-t border-foreground/[0.06] pt-6 text-center w-full space-y-3">
-          <p className="text-xs font-bold text-text-secondary">
+        <div className="mt-6 border-t border-slate-800/80 pt-5 text-center w-full space-y-2">
+          <p className="text-xs text-slate-400">
             New Merchant?{" "}
-            <Link href="/register" className="text-primary font-black hover:underline">
+            <Link href="/register" className="text-emerald-400 font-semibold hover:underline">
               Register New Seller Account
             </Link>
           </p>
           <div>
             <a
               href="https://www.asaliswad.com"
-              className="text-[10px] font-black uppercase tracking-[0.25em] text-text-muted hover:text-primary transition-colors duration-300"
+              className="text-xs font-medium text-slate-400 hover:text-emerald-400 transition-colors"
             >
-              Return to Storefront
+              ← Return to Storefront
             </a>
           </div>
         </div>
@@ -187,18 +188,11 @@ function LoginContent() {
 
 export default function SellerLoginPage() {
   return (
-    <main className="relative min-h-screen flex flex-col items-center justify-center p-4 text-foreground overflow-hidden">
-      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[120px] -z-10" />
-      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-accent/10 rounded-full blur-[120px] -z-10" />
-      
-      <div className="absolute top-10 right-10">
-        <DarkModeToggle />
-      </div>
-
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-950 text-white">
       <Suspense fallback={
         <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-primary"></div>
-          <span className="text-sm font-bold text-text-muted">Loading Portal...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-500"></div>
+          <span className="text-xs font-medium text-slate-400">Loading Portal...</span>
         </div>
       }>
         <LoginContent />

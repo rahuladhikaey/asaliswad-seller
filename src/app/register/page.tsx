@@ -5,22 +5,22 @@ import { supabase } from "@shared/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
-import { CheckCircle2, Building2, MapPin, KeyRound, ArrowRight } from "lucide-react";
+import { CheckCircle2, Building2, MapPin, KeyRound, ArrowRight, Tag, CreditCard } from "lucide-react";
 
 export default function SellerRegisterPage() {
   const router = useRouter();
   const [step, setStep] = useState<"info" | "address" | "otp" | "submitted">("info");
 
-  // Business Info
-  const [businessName, setBusinessName] = useState("");
-  const [ownerName, setOwnerName] = useState("");
+  // Merchant Details
+  const [fullName, setFullName] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [email, setEmail] = useState("");
+  const [upiId, setUpiId] = useState("");
+  const [category, setCategory] = useState("Grocery");
   const [password, setPassword] = useState("");
 
-  // Business Address
-  const [pickupAddress, setPickupAddress] = useState("");
-  const [warehouseAddress, setWarehouseAddress] = useState("");
+  // Location & Address
+  const [pickupLocation, setPickupLocation] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [pincode, setPincode] = useState("");
@@ -36,39 +36,18 @@ export default function SellerRegisterPage() {
 
   const parseErrorMsg = (err: any): string => {
     if (!err) return "";
-    if (typeof err === "string") {
-      const trimmed = err.trim();
-      if (!trimmed || trimmed === "{}" || trimmed === "[object Object]" || trimmed === "null") {
-        return "Registration encountered an issue. Please verify your details or sign in.";
-      }
-      return trimmed;
-    }
-    if (err.message && typeof err.message === "string") {
-      const msg = err.message.trim();
-      if (msg && msg !== "{}" && msg !== "[object Object]") {
-        if (msg.toLowerCase().includes("already registered") || msg.toLowerCase().includes("already exists")) {
-          return "An account with this email already exists. Please sign in or use a different email.";
-        }
-        return msg;
-      }
-    }
-    if (err.error_description && typeof err.error_description === "string") {
-      return err.error_description;
-    }
-    if (err.msg && typeof err.msg === "string") {
-      return err.msg;
-    }
-    return "Registration encountered an issue. Please verify your details or sign in.";
+    if (typeof err === "string") return err;
+    if (err.message && typeof err.message === "string") return err.message;
+    return "Registration encountered an issue. Please verify your details.";
   };
 
   const handleSendOtp = async () => {
     setError("");
     setLoading(true);
     try {
-      // Simple OTP flow or Brevo OTP API integration
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       setGeneratedOtp(code);
-      setInfoMessage(`Demo OTP Code generated: ${code}`);
+      setInfoMessage(`Verification OTP sent to +91 ${mobileNumber} (Demo Code: ${code})`);
       setStep("otp");
     } catch (err: any) {
       setError(parseErrorMsg(err) || "Failed to send OTP.");
@@ -89,15 +68,13 @@ export default function SellerRegisterPage() {
     try {
       let userId: string | undefined = undefined;
 
-      // 1. Create auth user in Supabase with role: seller
       try {
         const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
           password: password,
           options: {
             data: {
-              full_name: ownerName,
-              business_name: businessName,
+              full_name: fullName,
               role: "seller",
               phone: mobileNumber,
             },
@@ -105,10 +82,8 @@ export default function SellerRegisterPage() {
         });
 
         if (authError) {
-          console.warn("Auth signup notice:", authError);
-          // If user already exists or rate limit occurs, attempt signing in
           const { data: signInData } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
+            email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
             password: password,
           });
           userId = signInData?.user?.id;
@@ -119,51 +94,49 @@ export default function SellerRegisterPage() {
         console.warn("Auth signup exception handled:", authCatchErr);
       }
 
-      const sellerId = userId || `seller-${Date.now()}`;
-
-      // 2. Create entry in sellers table with status: pending
+      const generatedSellerCode = `SEL-${Math.floor(100000 + Math.random() * 900000)}`;
       const sellerRecord = {
-        id: sellerId,
-        user_id: sellerId,
-        business_name: businessName.trim(),
-        owner_name: ownerName.trim(),
+        id: userId || `seller-${Date.now()}`,
+        user_id: userId || `seller-${Date.now()}`,
+        seller_id: generatedSellerCode,
+        full_name: fullName.trim(),
+        owner_name: fullName.trim(),
+        business_name: `${fullName.trim()} Store`,
         mobile_number: mobileNumber.trim(),
-        email: email.trim(),
-        pickup_address: pickupAddress.trim(),
-        warehouse_address: warehouseAddress.trim() || pickupAddress.trim(),
-        city: city.trim(),
-        state: state.trim(),
-        pincode: pincode.trim(),
+        phone_number: mobileNumber.trim(),
+        email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
+        upi_id: upiId.trim() || null,
+        phonepay_no: upiId.trim() || null,
+        pickup_location: pickupLocation.trim(),
+        pickup_address: pickupLocation.trim(),
+        warehouse_address: pickupLocation.trim(),
+        city: city.trim() || pickupLocation.trim(),
+        state: state.trim() || "Default State",
+        pincode: pincode.trim() || "000000",
+        category: category,
         status: "approved",
+        account_status: "Active",
+        delete_requested: false,
         created_at: new Date().toISOString(),
       };
 
       const { error: sellerError } = await supabase.from("sellers").insert([sellerRecord]);
-
       if (sellerError) {
         console.warn("Seller profile creation notice:", sellerError);
       }
 
-      // Also persist pending seller application locally for offline/mock backup
-      try {
-        const existingLocal = JSON.parse(localStorage.getItem("asali_swad_pending_sellers") || "[]");
-        existingLocal.push({ ...sellerRecord });
-        localStorage.setItem("asali_swad_pending_sellers", JSON.stringify(existingLocal));
-      } catch (e) {
-        console.warn("Could not save to localStorage:", e);
-      }
-
-      // 3. Create default pickup location
+      // Persist pickup location
       try {
         await supabase.from("seller_pickup_locations").insert([{
-          seller_id: sellerId,
-          name: `${businessName} Main Warehouse`,
+          seller_id: sellerRecord.id,
+          name: `${fullName} Main Warehouse`,
+          location_name: pickupLocation,
           phone: mobileNumber,
           email: email,
-          address_line1: pickupAddress,
-          city: city,
-          state: state,
-          pincode: pincode,
+          address_line1: pickupLocation,
+          city: city || pickupLocation,
+          state: state || "Default State",
+          pincode: pincode || "000000",
           is_default: true,
         }]);
       } catch (locErr) {
@@ -191,7 +164,7 @@ export default function SellerRegisterPage() {
         <div className="rounded-[3rem] bg-foreground/[0.05] p-8 md:p-12 backdrop-blur-xl border border-foreground/[0.08] shadow-2xl flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">
-              Merchant Onboarding
+              Merchant Registration
             </span>
             <div className="flex gap-2">
               <span className={`h-2.5 w-8 rounded-full ${step === "info" ? "bg-primary" : "bg-foreground/20"}`} />
@@ -203,27 +176,27 @@ export default function SellerRegisterPage() {
           {step !== "submitted" && (
             <div className="mb-6">
               <h1 className="text-2xl font-black tracking-tight">
-                {step === "info" && "Business Details"}
-                {step === "address" && "Warehouse & Pickup Address"}
-                {step === "otp" && "Email Verification"}
+                {step === "info" && "Seller Account Details"}
+                {step === "address" && "Pickup & Merchant Category"}
+                {step === "otp" && "Phone OTP Verification"}
               </h1>
               <p className="text-xs font-bold text-text-secondary mt-1">
-                {step === "info" && "Enter your primary business contact & login details."}
-                {step === "address" && "Where should order pickups be fulfilled from?"}
-                {step === "otp" && `Enter the OTP sent to ${email}`}
+                {step === "info" && "Enter your full name, contact, UPI ID, and password."}
+                {step === "address" && "Select your category (Grocery/Snacks/Bakery) and pickup address."}
+                {step === "otp" && `Enter 6-digit OTP code sent to +91 ${mobileNumber}`}
               </p>
             </div>
           )}
 
-          {error && error.trim() !== "" && error.trim() !== "{}" && error.trim() !== "[object Object]" && (
-            <div className="mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 border border-rose-100/50 dark:border-rose-900/30">
-              <p className="text-xs font-bold text-rose-700 dark:text-rose-400 leading-snug">
+          {error && error.trim() !== "" && (
+            <div className="mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 border border-rose-100/50">
+              <p className="text-xs font-bold text-rose-700 dark:text-rose-400">
                 {error}
               </p>
             </div>
           )}
 
-          {/* STEP 1: BUSINESS INFO */}
+          {/* STEP 1: MERCHANT INFO */}
           {step === "info" && (
             <form
               className="space-y-4"
@@ -234,28 +207,14 @@ export default function SellerRegisterPage() {
             >
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Business Name *
+                  Full Name *
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Pure Spices & Honey Traders"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Owner / Representative Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Full Legal Name"
-                  value={ownerName}
-                  onChange={(e) => setOwnerName(e.target.value)}
+                  placeholder="Enter your full legal name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                   className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
                 />
               </div>
@@ -263,7 +222,7 @@ export default function SellerRegisterPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    Mobile Number *
+                    Phone Number (OTP Verified) *
                   </label>
                   <input
                     type="tel"
@@ -276,12 +235,11 @@ export default function SellerRegisterPage() {
                 </div>
                 <div>
                   <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    Email Address *
+                    Email Address (Optional)
                   </label>
                   <input
                     type="email"
-                    required
-                    placeholder="seller@business.com"
+                    placeholder="seller@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
@@ -291,7 +249,21 @@ export default function SellerRegisterPage() {
 
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Account Password *
+                  UPI ID (For Weekly Payouts) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="name@upi / 9876543210@paytm"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
+                  Password *
                 </label>
                 <input
                   type="password"
@@ -306,15 +278,15 @@ export default function SellerRegisterPage() {
 
               <button
                 type="submit"
-                className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-600/20 hover:opacity-[0.85] active:scale-95"
+                className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95"
               >
-                <span>Continue to Address</span>
+                <span>Continue to Category & Address</span>
                 <ArrowRight size={18} />
               </button>
             </form>
           )}
 
-          {/* STEP 2: ADDRESS INFO */}
+          {/* STEP 2: CATEGORY & LOCATION */}
           {step === "address" && (
             <form
               className="space-y-4"
@@ -325,69 +297,62 @@ export default function SellerRegisterPage() {
             >
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Pickup Address *
+                  Merchant Category *
                 </label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="Street address, door/building no., area"
-                  value={pickupAddress}
-                  onChange={(e) => setPickupAddress(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
-                />
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="Grocery">Grocery</option>
+                  <option value="Snacks">Snacks</option>
+                  <option value="Bakery">Bakery</option>
+                </select>
               </div>
 
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Warehouse Address (Optional, if different)
+                  Pickup Location / Warehouse Address *
                 </label>
                 <textarea
-                  rows={2}
-                  placeholder="Leave empty if same as Pickup Address"
-                  value={warehouseAddress}
-                  onChange={(e) => setWarehouseAddress(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                  required
+                  rows={3}
+                  placeholder="Street name, landmark, area for courier pickup"
+                  value={pickupLocation}
+                  onChange={(e) => setPickupLocation(e.target.value)}
+                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3 text-sm font-bold outline-none focus:border-primary"
                 />
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    City *
-                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">City</label>
                   <input
                     type="text"
-                    required
                     placeholder="City"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    State *
-                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">State</label>
                   <input
                     type="text"
-                    required
                     placeholder="State"
                     value={state}
                     onChange={(e) => setState(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    Pincode *
-                  </label>
+                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">Pincode</label>
                   <input
                     type="text"
-                    required
                     placeholder="Pincode"
                     value={pincode}
                     onChange={(e) => setPincode(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
                   />
                 </div>
               </div>
@@ -396,16 +361,16 @@ export default function SellerRegisterPage() {
                 <button
                   type="button"
                   onClick={() => setStep("info")}
-                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm hover:bg-foreground/5"
+                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 h-14 items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-600/20 hover:opacity-[0.85] active:scale-95 disabled:opacity-50"
+                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95 disabled:opacity-50"
                 >
-                  {loading ? "Sending OTP..." : "Verify & Register"}
+                  {loading ? "Sending OTP..." : "Send OTP & Register"}
                 </button>
               </div>
             </form>
@@ -415,7 +380,7 @@ export default function SellerRegisterPage() {
           {step === "otp" && (
             <form className="space-y-4" onSubmit={handleRegisterSubmit}>
               {infoMessage && (
-                <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100 dark:border-emerald-900/30">
+                <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100">
                   <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
                     {infoMessage}
                   </p>
@@ -424,7 +389,7 @@ export default function SellerRegisterPage() {
 
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  6-Digit OTP Code *
+                  6-Digit Phone OTP Code *
                 </label>
                 <input
                   type="text"
@@ -432,11 +397,8 @@ export default function SellerRegisterPage() {
                   maxLength={6}
                   placeholder="Enter 6-digit OTP"
                   value={otpInput}
-                  onChange={(e) => {
-                    setOtpInput(e.target.value);
-                    if (error) setError("");
-                  }}
-                  className="w-full text-center tracking-[0.5em] rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-4 text-xl font-black outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                  onChange={(e) => setOtpInput(e.target.value)}
+                  className="w-full text-center tracking-[0.5em] rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-5 py-4 text-xl font-black outline-none focus:border-primary"
                 />
               </div>
 
@@ -444,42 +406,39 @@ export default function SellerRegisterPage() {
                 <button
                   type="button"
                   onClick={() => setStep("address")}
-                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm hover:bg-foreground/5"
+                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-600/20 hover:opacity-[0.85] active:scale-95 disabled:opacity-50"
+                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95 disabled:opacity-50"
                 >
-                  {loading ? "Submitting..." : "Complete Registration"}
+                  {loading ? "Verifying..." : "Verify OTP & Open Dashboard"}
                 </button>
               </div>
             </form>
           )}
 
-          {/* STEP 4: SUBMITTED SUCCESS / ACTIVE APPROVED STATUS */}
+          {/* STEP 4: SUCCESS */}
           {step === "submitted" && (
             <div className="text-center py-6 space-y-4">
-              <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-lg">
+              <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-lg">
                 <CheckCircle2 size={40} />
               </div>
               <h2 className="text-2xl font-black tracking-tight">
-                Registration Successful!
+                Seller Account Active & Approved!
               </h2>
               <p className="text-sm font-bold text-text-secondary max-w-md mx-auto leading-relaxed">
-                Your merchant account is now <span className="text-emerald-600 dark:text-emerald-400 font-black">Active & Approved</span>. You can log into your seller portal immediately.
+                Welcome to Asali Swad! Your merchant account is fully registered under category <span className="text-emerald-600 font-black">{category}</span>.
               </p>
-              <div className="rounded-2xl bg-foreground/[0.03] p-4 text-xs text-text-muted font-semibold max-w-md mx-auto">
-                All merchant features, product listing tools, and inventory dashboards are unlocked for your account.
-              </div>
               <div className="pt-4">
                 <Link
-                  href="/"
+                  href="/dashboard"
                   className="inline-flex h-12 items-center justify-center px-8 rounded-2xl bg-primary text-white text-xs font-black uppercase tracking-wider shadow-lg hover:opacity-90"
                 >
-                  Proceed to Login
+                  Go to Seller Dashboard
                 </Link>
               </div>
             </div>
@@ -489,7 +448,7 @@ export default function SellerRegisterPage() {
             <p className="text-xs font-bold text-text-secondary">
               Already registered?{" "}
               <Link href="/" className="text-primary font-black hover:underline">
-                Sign In to Portal
+                Sign In to Seller Portal
               </Link>
             </p>
           </div>
