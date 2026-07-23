@@ -45,13 +45,17 @@ export async function POST(request: NextRequest) {
       // Send OTP via Brevo API
       const emailSent = await sendOtpEmail(normalizedEmail, otp);
 
+      console.log(`[SELLER OTP DEBUG] Generated code for ${normalizedEmail}: ${otp} (Email Sent: ${emailSent})`);
+
       return NextResponse.json({
         success: true,
         emailSent,
         expiresAt,
+        // Include dev OTP if Brevo API key is not configured or in dev environment
+        devOtp: (!emailSent || process.env.NODE_ENV !== "production") ? otp : undefined,
         message: emailSent
           ? "Verification OTP sent to your email!"
-          : "OTP sent! Please check your inbox."
+          : `OTP generated (${otp})! Please check your inbox or use code above.`
       });
     }
 
