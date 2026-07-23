@@ -96,26 +96,27 @@ export default function SellerRegisterPage() {
       let userId: string | undefined = undefined;
 
       try {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
-          password: password,
-          options: {
-            data: {
-              full_name: fullName,
-              role: "seller",
-              phone: mobileNumber,
-            },
-          },
+        const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
+        const signupRes = await fetch("/api/auth/signup-verified", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: targetEmail,
+            password: password,
+            fullName: fullName.trim(),
+            phone: mobileNumber.trim(),
+          }),
         });
-
-        if (authError) {
+        const signupData = await signupRes.json();
+        if (signupRes.ok && signupData.success) {
+          userId = signupData.user?.id;
+        } else {
+          // Fallback to sign in if account already exists
           const { data: signInData } = await supabase.auth.signInWithPassword({
-            email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
+            email: targetEmail,
             password: password,
           });
           userId = signInData?.user?.id;
-        } else {
-          userId = authData.user?.id;
         }
       } catch (authCatchErr) {
         console.warn("Auth signup exception handled:", authCatchErr);
