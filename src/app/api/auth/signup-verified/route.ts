@@ -28,7 +28,20 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (createError) {
+    if (createError && (createError.message.toLowerCase().includes("bearer token") || createError.message.toLowerCase().includes("not allowed") || createError.status === 401 || createError.status === 403)) {
+      console.warn("[Seller Auth API] Admin creation requires Service Role key, falling back to standard signUp:", createError.message);
+      const signUpRes = await supabaseServer.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: { full_name: fullName, role: "seller", phone: phone }
+        }
+      });
+      if (signUpRes.error) {
+        return NextResponse.json({ error: signUpRes.error.message }, { status: 400 });
+      }
+      user = signUpRes.data.user;
+    } else if (createError) {
       const message = createError.message.toLowerCase();
       if (message.includes("already registered") || message.includes("duplicate")) {
         // If user already exists, update user password and confirm email
