@@ -45,9 +45,19 @@ export default function SellerRegisterPage() {
     setError("");
     setLoading(true);
     try {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(code);
-      setInfoMessage(`Verification OTP sent to +91 ${mobileNumber} (Demo Code: ${code})`);
+      const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
+      const res = await fetch("/api/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", email: targetEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || "Failed to send OTP.");
+        setLoading(false);
+        return;
+      }
+      setInfoMessage(`Verification OTP sent to ${targetEmail}`);
       setStep("otp");
     } catch (err: any) {
       setError(parseErrorMsg(err) || "Failed to send OTP.");
@@ -59,9 +69,26 @@ export default function SellerRegisterPage() {
     e.preventDefault();
     setError("");
 
-    if (step === "otp" && otpInput.trim() !== generatedOtp && otpInput.trim() !== "123456") {
-      setError("Invalid OTP entered. Please try again.");
-      return;
+    if (step === "otp") {
+      setLoading(true);
+      const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
+      try {
+        const verifyRes = await fetch("/api/otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "verify", email: targetEmail, otp: otpInput }),
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyRes.ok || !verifyData.success) {
+          setError(verifyData.error || "Invalid OTP entered. Please try again.");
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        setError("Failed to verify OTP. Please try again.");
+        setLoading(false);
+        return;
+      }
     }
 
     setLoading(true);
