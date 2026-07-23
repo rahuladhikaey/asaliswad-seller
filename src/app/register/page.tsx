@@ -57,9 +57,7 @@ export default function SellerRegisterPage() {
         setLoading(false);
         return;
       }
-      setInfoMessage(data.devOtp 
-        ? `Verification OTP generated for ${targetEmail} (Code: ${data.devOtp})`
-        : `Verification OTP sent to ${targetEmail}`);
+      setInfoMessage(`Verification OTP sent to ${targetEmail}! Please check your inbox.`);
       setStep("otp");
     } catch (err: any) {
       setError(parseErrorMsg(err) || "Failed to send OTP.");
