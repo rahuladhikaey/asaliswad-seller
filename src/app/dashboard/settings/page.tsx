@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
-import { Building2, CreditCard, MapPin, Bell, Save, CheckCircle2 } from "lucide-react";
+import { Building2, CreditCard, MapPin, Bell, Save, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
 
 export default function SellerSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
+  const [deleteRequested, setDeleteRequested] = useState(false);
+  const [deleteDate, setDeleteDate] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     business_name: "",
@@ -40,6 +43,8 @@ export default function SellerSettings() {
           .maybeSingle();
 
         if (seller) {
+          setDeleteRequested(Boolean(seller.delete_requested));
+          setDeleteDate(seller.delete_date || null);
           setForm({
             business_name: seller.business_name || "",
             owner_name: seller.owner_name || "",
@@ -65,6 +70,61 @@ export default function SellerSettings() {
     }
     loadProfile();
   }, []);
+
+  const handleRequestDeletion = async () => {
+    if (!confirm("Are you sure you want to request account deletion? A mandatory 15-day hold period will begin.")) return;
+    setDeleting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const scheduledDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { error } = await supabase
+        .from("sellers")
+        .update({
+          delete_requested: true,
+          delete_date: scheduledDate,
+          account_status: "Pending Delete"
+        })
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      setDeleteRequested(true);
+      setDeleteDate(scheduledDate);
+      setStatusMsg("⚠️ Account deletion request submitted. Scheduled in 15 days.");
+    } catch (err: any) {
+      alert("Failed to submit deletion request: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleCancelDeletion = async () => {
+    setDeleting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from("sellers")
+        .update({
+          delete_requested: false,
+          delete_date: null,
+          account_status: "Active"
+        })
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      setDeleteRequested(false);
+      setDeleteDate(null);
+      setStatusMsg("✅ Account deletion request canceled. Your account is active.");
+    } catch (err: any) {
+      alert("Failed to cancel deletion request: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,6 +336,50 @@ export default function SellerSettings() {
               </div>
             </div>
           </div>
+        {/* Danger Zone: Account Deletion */}
+        <div className="rounded-[2.5rem] bg-rose-500/5 border border-rose-500/20 p-6 backdrop-blur-xl space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-rose-600 dark:text-rose-400">Danger Zone: Account Deletion</h2>
+              <p className="text-xs font-bold text-text-muted mt-0.5">
+                Initiates a mandatory 15-day hold period before permanent seller account deletion.
+              </p>
+            </div>
+          </div>
+
+          {deleteRequested ? (
+            <div className="rounded-2xl bg-rose-500/10 border border-rose-500/30 p-4 text-xs font-bold text-rose-600 dark:text-rose-300 space-y-3">
+              <p>
+                ⚠️ <strong>Deletion Pending:</strong> Your seller account is scheduled for permanent deletion on{" "}
+                <span className="font-black text-rose-500">
+                  {deleteDate ? new Date(deleteDate).toLocaleDateString("en-IN", { dateStyle: "full" }) : "15 days"}
+                </span>.
+              </p>
+              <button
+                type="button"
+                onClick={handleCancelDeletion}
+                disabled={deleting}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition uppercase tracking-wider"
+              >
+                {deleting ? "Processing..." : "Cancel Deletion Request"}
+              </button>
+            </div>
+          ) : (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleRequestDeletion}
+                disabled={deleting}
+                className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider shadow-lg hover:shadow-rose-600/20 transition flex items-center gap-2"
+              >
+                <Trash2 size={16} />
+                <span>{deleting ? "Submitting Request..." : "Request 15-Day Account Deletion"}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         <button
