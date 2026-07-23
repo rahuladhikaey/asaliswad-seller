@@ -123,15 +123,119 @@ export default function SellerDashboard() {
           lowStock: lowStockCount
         });
         setRecentOrders(filteredRecentOrders);
+  async function fetchDashboardData() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      } catch (error) {
-        console.error("Error fetching seller dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
+      // 1. Fetch seller's products
+      const { data: products } = await supabase
+        .from("products")
+        .select("*")
+        .eq("seller_id", user.id);
+
+      const sellerProducts = (products || []) as Product[];
+      const sellerProductIds = sellerProducts.map(p => p.id);
+
+      // 2. Count low stock products
+      const lowStockCount = sellerProducts.filter(p => (p.stock ?? 0) <= (p.low_stock_limit ?? 5)).length;
+
+      // 3. Fetch all orders
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      const allOrders = (orders || []) as Order[];
+
+      // 4. Filter and process orders belonging to this seller
+      let sellerOrderCount = 0;
+      let todayCount = 0;
+      let pendingCount = 0;
+      let totalSalesVolume = 0;
+      let sellerRevenue = 0;
+      const filteredRecentOrders: any[] = [];
+
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      allOrders.forEach(order => {
+        try {
+          const orderDateStr = new Date(order.created_at || "").toISOString().split("T")[0];
+          const isToday = orderDateStr === todayStr;
+
+          // Direct seller check or item match
+          const isDirectSellerOrder = order.seller_id === user.id;
+          let sellerItems: any[] = [];
+
+          if (order.items && Array.isArray(order.items)) {
+            sellerItems = order.items.filter((item: any) => sellerProductIds.includes(item.product_id || item.id));
+          } else if (order.product_details) {
+            const items = JSON.parse(order.product_details || "[]");
+            sellerItems = items.filter((item: any) => sellerProductIds.includes(item.id));
+          }
+
+          if (isDirectSellerOrder || sellerItems.length > 0) {
+            sellerOrderCount++;
+            if (isToday) todayCount++;
+            if (order.order_status === "placed" || order.order_status === "pending" || order.order_status === "processing") {
+              pendingCount++;
+            }
+
+            const itemsRevenue = sellerItems.reduce((sum: number, item: any) => sum + (item.subtotal || (item.price * item.quantity)), 0);
+            const orderRevenue = itemsRevenue > 0 ? itemsRevenue : (order.total_amount || 0);
+            
+            sellerRevenue += Number(orderRevenue);
+            totalSalesVolume += sellerItems.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0);
+
+            if (filteredRecentOrders.length < 5) {
+              filteredRecentOrders.push({
+                id: order.id,
+                order_number: order.order_number || String(order.id).slice(0, 8),
+                customer_name: order.customer_name || "Customer",
+                created_at: order.created_at,
+                order_status: order.order_status,
+                payment_status: order.payment_status,
+                total_amount: orderRevenue
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Error processing order", order.id, e);
+        }
+      });
+
+      setStats({
+        totalProducts: sellerProducts.length,
+        totalOrders: sellerOrderCount,
+        todaysOrders: todayCount,
+        pendingOrders: pendingCount,
+        totalSales: totalSalesVolume,
+        revenue: sellerRevenue,
+        lowStock: lowStockCount
+      });
+      setRecentOrders(filteredRecentOrders);
+
+    } catch (error) {
+      console.error("Error fetching seller dashboard data:", error);
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
     fetchDashboardData();
+
+    // Supabase Realtime WebSockets for zero-refresh seller monitoring
+    const channel = supabase
+      .channel("seller-dashboard-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => fetchDashboardData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, () => fetchDashboardData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "seller_notifications" }, () => fetchDashboardData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   if (loading) {
