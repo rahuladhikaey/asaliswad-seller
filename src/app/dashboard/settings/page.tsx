@@ -336,6 +336,8 @@ export default function SellerSettings() {
               </div>
             </div>
           </div>
+        </div>
+
         {/* Danger Zone: Account Deletion */}
         <div className="rounded-[2.5rem] bg-rose-500/5 border border-rose-500/20 p-6 backdrop-blur-xl space-y-4">
           <div className="flex items-center gap-3">
