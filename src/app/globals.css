@@ -47,23 +47,39 @@ body {
 	color: var(--foreground);
 }
 
-/* Universal High-Contrast Dark Text Rules for Inputs across Light & Dark Modes */
-input, textarea, select {
+/* 1. White & Light Background Inputs: High-Contrast Solid Black Text */
+input.bg-white, input.bg-slate-50, input.bg-slate-100, input.bg-slate-200,
+textarea.bg-white, textarea.bg-slate-50, textarea.bg-slate-100, textarea.bg-slate-200,
+select.bg-white, select.bg-slate-50, select.bg-slate-100, select.bg-slate-200,
+.dark input.bg-white, .dark input.bg-slate-50, .dark input.bg-slate-100,
+.dark textarea.bg-white, .dark textarea.bg-slate-50, .dark textarea.bg-slate-100,
+.dark select.bg-white, .dark select.bg-slate-50, .dark select.bg-slate-100 {
 	color: #0f172a !important;
+	background-color: #ffffff;
 }
 
+.dark input.bg-white::placeholder, .dark input.bg-slate-50::placeholder,
+.dark textarea.bg-white::placeholder, .dark textarea.bg-slate-50::placeholder {
+	color: #64748b !important;
+}
+
+/* 2. Dark Background Inputs & Dark Modals (Add Product Modal, bg-slate-800/900): High-Contrast Bright White Text */
+.dark input:not(.bg-white):not(.bg-slate-50):not(.bg-slate-100),
+.dark textarea:not(.bg-white):not(.bg-slate-50):not(.bg-slate-100),
+.dark select:not(.bg-white):not(.bg-slate-50):not(.bg-slate-100),
+input.bg-slate-800, input.bg-slate-900, input.bg-slate-950, input.bg-slate-700,
+textarea.bg-slate-800, textarea.bg-slate-900, textarea.bg-slate-950, textarea.bg-slate-700,
+select.bg-slate-800, select.bg-slate-900, select.bg-slate-950, select.bg-slate-700 {
+	color: #f8fafc !important;
+}
+
+.dark input:not(.bg-white):not(.bg-slate-50):not(.bg-slate-100)::placeholder,
+.dark textarea:not(.bg-white):not(.bg-slate-50):not(.bg-slate-100)::placeholder,
+input.bg-slate-800::placeholder, textarea.bg-slate-800::placeholder {
+	color: #94a3b8 !important;
+}
+
+/* 3. Base Fallbacks */
 input::placeholder, textarea::placeholder {
-	color: #64748b !important;
-}
-
-.dark input, .dark textarea, .dark select {
-	color: #0f172a !important;
-}
-
-.dark input::placeholder, .dark textarea::placeholder {
-	color: #64748b !important;
-}
-
-input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"] {
-	color: #0f172a !important;
+	color: #64748b;
 }
