@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendOtpEmail } from "@shared/utils/brevo";
+import { supabase } from "@shared/utils/supabaseClient";
 
 // In-memory temporary OTP storage
 const otpStore = new Map<string, {
@@ -87,6 +88,13 @@ export async function POST(request: NextRequest) {
 
       if (otp.trim() === stored.otp || otp.trim() === "123456") {
         otpStore.delete(normalizedEmail);
+        
+        // Update seller record in Supabase to mark email_verified = true
+        await supabase
+          .from("sellers")
+          .update({ email_verified: true, updated_at: new Date().toISOString() })
+          .eq("email", normalizedEmail);
+
         return NextResponse.json({
           success: true,
           verified: true,

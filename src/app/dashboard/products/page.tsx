@@ -19,6 +19,9 @@ export default function SellerProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [userId, setUserId] = useState<string>("");
+  const [isSettingsComplete, setIsSettingsComplete] = useState<boolean>(false);
+  const [settingsCompletionPct, setSettingsCompletionPct] = useState<number>(0);
+  const [fssaiStatus, setFssaiStatus] = useState<string>("Not Submitted");
 
   // Modal / Form state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -88,6 +91,21 @@ export default function SellerProducts() {
       if (!user) return;
       setUserId(user.id);
 
+      // Fetch seller settings status
+      const { data: seller } = await supabase
+        .from("sellers")
+        .select("settings_completion_pct, fssai_status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const pct = seller?.settings_completion_pct || 0;
+      const fStatus = seller?.fssai_status || "Not Submitted";
+      const isComplete = pct === 100 && fStatus === "Verified";
+
+      setSettingsCompletionPct(pct);
+      setFssaiStatus(fStatus);
+      setIsSettingsComplete(isComplete);
+
       // Fetch products for this seller
       const { data: productsData } = await supabase
         .from("products")
@@ -115,7 +133,22 @@ export default function SellerProducts() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (isModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isModalOpen]);
+
   const openAddModal = () => {
+    if (!isSettingsComplete) {
+      alert("Please complete your Merchant Settings before adding products.");
+      return;
+    }
     setEditingProduct(null);
     setUploadedImages([]);
     setImageError("");
@@ -299,18 +332,36 @@ export default function SellerProducts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight">My Products</h1>
-          <p className="text-sm font-bold text-text-secondary mt-1">Manage spices, grocery packages, and pricing.</p>
+          <h1 className="text-2xl font-bold tracking-tight">My Products</h1>
+          <p className="text-xs font-medium text-slate-500 mt-1">Manage spices, grocery packages, and pricing.</p>
         </div>
         <button
           onClick={openAddModal}
-          className="flex items-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-primary/20 hover:opacity-90 transition-all duration-300"
+          disabled={!isSettingsComplete}
+          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={16} /> Add Product
         </button>
       </div>
+
+      {!isSettingsComplete && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-4 text-xs font-semibold text-amber-800 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <strong>🔒 Product Management Locked:</strong> Please complete your Merchant Settings before adding products.
+            <span className="block text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+              Settings Completion: {settingsCompletionPct}% | FSSAI License Status: {fssaiStatus}
+            </span>
+          </div>
+          <a
+            href="/dashboard/settings"
+            className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 transition-colors text-center"
+          >
+            Complete Settings
+          </a>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -407,13 +458,13 @@ export default function SellerProducts() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-sm">
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] bg-background border border-foreground/[0.08] shadow-2xl p-6 md:p-8 flex flex-col">
-            <div className="flex items-center justify-between border-b border-foreground/[0.06] pb-4 mb-6">
-              <h3 className="text-xl font-black">{editingProduct ? "Edit Product" : "Add New Product"}</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 md:p-8 flex flex-col text-slate-900 dark:text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6">
+              <h3 className="text-xl font-black text-slate-900 dark:text-slate-100">{editingProduct ? "Edit Product" : "Add New Product"}</h3>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="rounded-xl border border-foreground/[0.08] p-2 text-text-muted hover:text-text-primary"
+                className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <X size={18} />
               </button>
@@ -424,20 +475,20 @@ export default function SellerProducts() {
                 {/* Left Column */}
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Product Name *</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Product Name *</label>
                     <input
                       type="text"
                       required
                       value={form.name}
                       onChange={e => setForm({...form, name: e.target.value})}
                       placeholder="e.g. Handmade Bori (Special)"
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                     />
                   </div>
 
                   <div className="grid gap-4 grid-cols-2">
                     <div>
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Price (₹) *</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Price (₹) *</label>
                       <input
                         type="number"
                         required
@@ -445,51 +496,51 @@ export default function SellerProducts() {
                         value={form.price}
                         onChange={e => setForm({...form, price: e.target.value})}
                         placeholder="199"
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">MRP (₹) [Optional]</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">MRP (₹) [Optional]</label>
                       <input
                         type="number"
                         min="1"
                         value={form.mrp}
                         onChange={e => setForm({...form, mrp: e.target.value})}
                         placeholder="249"
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Category *</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Category *</label>
                     <select
                       value={form.category_id}
                       onChange={e => setForm({...form, category_id: e.target.value})}
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                     >
-                      {categories.map(c => (
+                      {categories.map((c: Category) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5 flex items-center justify-between">
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5 flex items-center justify-between">
                       <span>Product Images (Max 2 Images, ≤ 100 KB each)</span>
-                      <span className="text-[10px] text-primary font-bold">({uploadedImages.length}/2 Uploaded)</span>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">({uploadedImages.length}/2 Uploaded)</span>
                     </label>
 
                     {/* Image Thumbnail Previews */}
                     {uploadedImages.length > 0 && (
                       <div className="flex items-center gap-3 mb-2.5">
                         {uploadedImages.map((imgSrc, idx) => (
-                          <div key={idx} className="relative h-20 w-20 rounded-2xl overflow-hidden border border-foreground/15 group shadow-sm bg-foreground/[0.02]">
+                          <div key={idx} className="relative h-20 w-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 group shadow-sm bg-slate-100 dark:bg-slate-800">
                             <img src={imgSrc} alt={`Uploaded ${idx + 1}`} className="h-full w-full object-cover" />
                             <button
                               type="button"
                               onClick={() => removeImage(idx)}
-                              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-black shadow hover:scale-110 transition-transform"
+                              className="absolute top-1 right-1 h-5 w-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] font-black shadow hover:scale-110 transition-transform"
                             >
                               ✕
                             </button>
@@ -503,7 +554,7 @@ export default function SellerProducts() {
 
                     {/* Drag & Drop File Upload Zone */}
                     {uploadedImages.length < 2 && (
-                      <div className="relative border-2 border-dashed border-foreground/20 hover:border-primary rounded-2xl p-4 text-center cursor-pointer transition-colors bg-foreground/[0.01]">
+                      <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-600 rounded-xl p-4 text-center cursor-pointer transition-colors bg-slate-50 dark:bg-slate-800/50">
                         <input
                           type="file"
                           accept="image/*"
@@ -512,11 +563,11 @@ export default function SellerProducts() {
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         />
                         <div className="flex flex-col items-center justify-center gap-1">
-                          <Upload size={22} className="text-primary mb-1" />
-                          <span className="text-xs font-bold text-foreground">
+                          <Upload size={22} className="text-emerald-600 dark:text-emerald-400 mb-1" />
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                             Upload Image File (Max 2 images, ≤ 100 KB)
                           </span>
-                          <span className="text-[10px] font-semibold text-text-muted">
+                          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                             PNG, JPG, WEBP formats supported
                           </span>
                         </div>
@@ -525,14 +576,14 @@ export default function SellerProducts() {
 
                     {/* Error Alert */}
                     {imageError && (
-                      <p className="text-xs font-bold text-red-500 mt-1.5 animate-pulse">
+                      <p className="text-xs font-bold text-rose-500 mt-1.5 animate-pulse">
                         {imageError}
                       </p>
                     )}
 
                     {/* URL Input Fallback */}
                     <div className="mt-2.5">
-                      <label className="text-[10px] font-bold text-text-muted block mb-1">Or paste image URL:</label>
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">Or paste image URL:</label>
                       <input
                         type="text"
                         value={form.image_url}
@@ -543,29 +594,29 @@ export default function SellerProducts() {
                           }
                         }}
                         placeholder="Paste image URL here..."
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-2.5 text-xs font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                   </div>
 
                   <div className="grid gap-4 grid-cols-3">
                     <div className="col-span-2">
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">SKU</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">SKU</label>
                       <input
                         type="text"
                         value={form.sku}
                         onChange={e => setForm({...form, sku: e.target.value})}
                         placeholder="AS-BORI-001"
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Brand</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Brand</label>
                       <input
                         type="text"
                         value={form.brand}
                         onChange={e => setForm({...form, brand: e.target.value})}
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                   </div>
@@ -574,100 +625,100 @@ export default function SellerProducts() {
                 {/* Right Column */}
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Description *</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Description *</label>
                     <textarea
                       required
                       rows={3}
                       value={form.description}
                       onChange={e => setForm({...form, description: e.target.value})}
                       placeholder="Detailed description of the product and its quality..."
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary resize-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all resize-none"
                     />
                   </div>
 
                   <div className="grid gap-4 grid-cols-2">
                     <div>
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Stock Quantity *</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Stock Quantity *</label>
                       <input
                         type="number"
                         required
                         min="0"
                         value={form.stock}
                         onChange={e => setForm({...form, stock: e.target.value})}
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Low Stock Limit *</label>
+                      <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Low Stock Limit *</label>
                       <input
                         type="number"
                         required
                         min="1"
                         value={form.low_stock_limit}
                         onChange={e => setForm({...form, low_stock_limit: e.target.value})}
-                        className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-sm font-bold outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Offers (One per line)</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Offers (One per line)</label>
                     <textarea
                       rows={2}
                       value={form.offersText}
                       onChange={e => setForm({...form, offersText: e.target.value})}
                       placeholder="Buy 2 Get 1 Free&#10;Flat 10% Off"
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-xs font-bold outline-none focus:border-primary resize-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all resize-none"
                     />
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Packages (Format: Name:Price:MRP:isBestSeller) [One per line]</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Packages (Format: Name:Price:MRP:isBestSeller) [One per line]</label>
                     <textarea
                       rows={2}
                       value={form.packagesText}
                       onChange={e => setForm({...form, packagesText: e.target.value})}
                       placeholder="250g:120:150:false&#10;500g:220:280:true"
-                      className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-xs font-bold outline-none focus:border-primary resize-none"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all resize-none"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-black uppercase text-text-secondary block mb-1.5">Specifications (Format: Key:Value) [One per line]</label>
+                <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Specifications (Format: Key:Value) [One per line]</label>
                 <textarea
                   rows={2}
                   value={form.specificationsText}
                   onChange={e => setForm({...form, specificationsText: e.target.value})}
                   placeholder="Ingredients: Premium lentils, organic spices&#10;Shelf Life: 6 Months"
-                  className="w-full rounded-2xl border border-foreground/[0.1] bg-foreground/[0.01] px-4 py-3 text-xs font-bold outline-none focus:border-primary resize-none"
+                  className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all resize-none"
                 />
               </div>
 
               {statusMessage && (
-                <div className={`p-4 rounded-2xl text-xs font-black ${
+                <div className={`p-4 rounded-xl text-xs font-black ${
                   statusMessage.startsWith("❌") 
-                    ? "bg-rose-500/10 text-rose-700" 
+                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-400" 
                     : statusMessage.startsWith("✅")
-                    ? "bg-emerald-500/10 text-emerald-700"
-                    : "bg-primary/10 text-primary"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                 }`}>
                   {statusMessage}
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-4 border-t border-foreground/[0.06] pt-4 mt-6">
+              <div className="flex items-center justify-end gap-4 border-t border-slate-100 dark:border-slate-800 pt-4 mt-6">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-2xl border border-foreground/[0.08] px-5 py-3 text-sm font-black text-text-secondary hover:bg-foreground/[0.02]"
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 px-5 py-3 text-sm font-black text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-2xl bg-primary px-6 py-3 text-sm font-black text-white shadow-lg shadow-primary/20 hover:opacity-90"
+                  className="rounded-xl bg-emerald-600 text-white px-6 py-3 text-sm font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 active:scale-95 transition-all"
                 >
                   {editingProduct ? "Update Product" : "Publish Product"}
                 </button>

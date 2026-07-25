@@ -123,6 +123,17 @@ export default function SellerOrders() {
     }
   };
 
+  useEffect(() => {
+    if (selectedOrder) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [selectedOrder]);
+
   const filteredByTab = orders.filter(ord => {
     if (activeTab === "all") return true;
     return (ord.order_status || "placed").toLowerCase() === activeTab.toLowerCase();
@@ -141,7 +152,7 @@ export default function SellerOrders() {
       </div>
 
       {statusMessage && (
-        <div className="rounded-2xl bg-primary/10 p-4 border border-primary/20 text-xs font-black text-primary">
+        <div className="p-4 rounded-2xl bg-primary/10 text-primary text-xs font-black">
           {statusMessage}
         </div>
       )}
@@ -244,8 +255,8 @@ export default function SellerOrders() {
 
       {/* Details Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-md">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] bg-background border border-foreground/[0.08] p-6 md:p-8 shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 md:p-8 shadow-2xl space-y-6 text-slate-900 dark:text-slate-100">
             <div className="flex items-center justify-between border-b border-foreground/[0.06] pb-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-primary">Order Overview</span>

@@ -2,396 +2,691 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
-import { Building2, CreditCard, MapPin, Bell, Save, CheckCircle2, AlertTriangle, Trash2 } from "lucide-react";
+import { 
+  Building2, 
+  MapPin, 
+  Save, 
+  CheckCircle2, 
+  AlertTriangle, 
+  FileText, 
+  Phone, 
+  Mail, 
+  ShieldCheck, 
+  Upload, 
+  Clock, 
+  XCircle,
+  HelpCircle,
+  Percent
+} from "lucide-react";
+import { activeFSSAIProvider, calculateMerchantCompletion } from "@shared/services/fssaiVerificationService";
 
 export default function SellerSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
-  const [deleteRequested, setDeleteRequested] = useState(false);
-  const [deleteDate, setDeleteDate] = useState<string | null>(null);
+  const [sellerId, setSellerId] = useState<string | null>(null);
+
+  // OTP state
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState("");
+
+  // FSSAI document state
+  const [fssaiFile, setFssaiFile] = useState<File | null>(null);
+  const [fssaiUploadError, setFssaiUploadError] = useState("");
 
   const [form, setForm] = useState({
     business_name: "",
     owner_name: "",
     mobile_number: "",
     email: "",
+    email_verified: false,
+    business_category: "Grocery",
     pickup_address: "",
     warehouse_address: "",
     city: "",
     state: "",
     pincode: "",
     gstin: "",
-    pan_number: "",
-    bank_account_number: "",
-    bank_ifsc: "",
-    bank_name: "",
+    fssai_license_number: "",
+    fssai_certificate_url: "",
+    fssai_expiry_date: "",
+    fssai_status: "Not Submitted",
+    fssai_rejection_reason: "",
+    phonepay_number: "",
+    business_logo_url: "",
+    profile_photo_url: "",
+    business_description: "",
+    account_status: "Active",
+    created_at: "",
+    updated_at: ""
   });
 
-  useEffect(() => {
-    async function loadProfile() {
-      setLoading(true);
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data: seller } = await supabase
-          .from("sellers")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (seller) {
-          setDeleteRequested(Boolean(seller.delete_requested));
-          setDeleteDate(seller.delete_date || null);
-          setForm({
-            business_name: seller.business_name || "",
-            owner_name: seller.owner_name || "",
-            mobile_number: seller.mobile_number || "",
-            email: seller.email || "",
-            pickup_address: seller.pickup_address || "",
-            warehouse_address: seller.warehouse_address || "",
-            city: seller.city || "",
-            state: seller.state || "",
-            pincode: seller.pincode || "",
-            gstin: seller.gstin || "",
-            pan_number: seller.pan_number || "",
-            bank_account_number: seller.bank_account_number || "",
-            bank_ifsc: seller.bank_ifsc || "",
-            bank_name: seller.bank_name || "",
-          });
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadProfile();
-  }, []);
-
-  const handleRequestDeletion = async () => {
-    if (!confirm("Are you sure you want to request account deletion? A mandatory 15-day hold period will begin.")) return;
-    setDeleting(true);
+  const loadProfile = async () => {
+    setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const scheduledDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString();
-
-      const { error } = await supabase
+      const { data: seller } = await supabase
         .from("sellers")
-        .update({
-          delete_requested: true,
-          delete_date: scheduledDate,
-          account_status: "Pending Delete"
-        })
-        .eq("user_id", user.id);
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-      if (error) throw error;
-      setDeleteRequested(true);
-      setDeleteDate(scheduledDate);
-      setStatusMsg("⚠️ Account deletion request submitted. Scheduled in 15 days.");
-    } catch (err: any) {
-      alert("Failed to submit deletion request: " + err.message);
+      if (seller) {
+        setSellerId(seller.id);
+        setForm({
+          business_name: seller.business_name || "",
+          owner_name: seller.owner_name || seller.full_name || "",
+          mobile_number: seller.mobile_number || seller.phone_number || "",
+          email: seller.email || user.email || "",
+          email_verified: Boolean(seller.email_verified),
+          business_category: seller.business_category || seller.category || "Grocery",
+          pickup_address: seller.pickup_address || "",
+          warehouse_address: seller.warehouse_address || "",
+          city: seller.city || "",
+          state: seller.state || "",
+          pincode: seller.pincode || "",
+          gstin: seller.gstin || "",
+          fssai_license_number: seller.fssai_license_number || "",
+          fssai_certificate_url: seller.fssai_certificate_url || "",
+          fssai_expiry_date: seller.fssai_expiry_date || "",
+          fssai_status: seller.fssai_status || "Not Submitted",
+          fssai_rejection_reason: seller.fssai_rejection_reason || "",
+          phonepay_number: seller.phonepay_number || seller.phonepay_no || "",
+          business_logo_url: seller.business_logo_url || seller.profile_photo || "",
+          profile_photo_url: seller.profile_photo_url || "",
+          business_description: seller.business_description || "",
+          account_status: seller.account_status || seller.status || "Active",
+          created_at: seller.created_at || "",
+          updated_at: seller.updated_at || ""
+        });
+      }
+    } catch (e) {
+      console.error(e);
     } finally {
-      setDeleting(false);
+      setLoading(false);
     }
   };
 
-  const handleCancelDeletion = async () => {
-    setDeleting(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  useEffect(() => {
+    loadProfile();
+  }, []);
 
-      const { error } = await supabase
-        .from("sellers")
-        .update({
-          delete_requested: false,
-          delete_date: null,
-          account_status: "Active"
-        })
-        .eq("user_id", user.id);
+  const completionPct = calculateMerchantCompletion(form);
 
-      if (error) throw error;
-      setDeleteRequested(false);
-      setDeleteDate(null);
-      setStatusMsg("✅ Account deletion request canceled. Your account is active.");
-    } catch (err: any) {
-      alert("Failed to cancel deletion request: " + err.message);
-    } finally {
-      setDeleting(false);
+  const handleSendOtp = async () => {
+    if (!form.email) {
+      alert("Please enter a valid email address first.");
+      return;
     }
+    setSendingOtp(true);
+    setOtpError("");
+    try {
+      const res = await fetch("/api/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", email: form.email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      setOtpSent(true);
+      alert("Verification OTP sent to your email via Brevo!");
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to send OTP.");
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode) {
+      setOtpError("Please enter the 6-digit verification code.");
+      return;
+    }
+    setVerifyingOtp(true);
+    setOtpError("");
+    try {
+      const res = await fetch("/api/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", email: form.email, otp: otpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.verified) throw new Error(data.error || "Invalid OTP code.");
+      setForm(prev => ({ ...prev, email_verified: true }));
+      setOtpSent(false);
+      setOtpCode("");
+      setStatusMsg("✅ Email verified successfully!");
+    } catch (err: any) {
+      setOtpError(err.message || "Failed to verify OTP.");
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  const handleFssaiFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFssaiUploadError("");
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+
+    const validation = activeFSSAIProvider.validateDocument({ size: file.size, type: file.type });
+    if (!validation.valid) {
+      setFssaiUploadError(validation.message || "Invalid file format or size.");
+      setFssaiFile(null);
+      return;
+    }
+
+    setFssaiFile(file);
+
+    // Convert file to Base64/DataURL for immediate storage preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setForm(prev => ({ ...prev, fssai_certificate_url: event.target!.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setStatusMsg("");
+    setFssaiUploadError("");
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Validate FSSAI License Number if provided
+      if (form.fssai_license_number) {
+        const licenseCheck = activeFSSAIProvider.validateFormat(form.fssai_license_number);
+        if (!licenseCheck.valid) {
+          throw new Error(licenseCheck.message);
+        }
+      }
+
+      // Automatically determine FSSAI status: if license and document exist and previously Not Submitted/Rejected, set to Pending Verification
+      let newFssaiStatus = form.fssai_status;
+      if (form.fssai_license_number && form.fssai_certificate_url) {
+        if (form.fssai_status === "Not Submitted" || form.fssai_status === "Rejected") {
+          newFssaiStatus = "Pending Verification";
+        }
+      }
+
+      const updatedPct = calculateMerchantCompletion({ ...form, fssai_status: newFssaiStatus });
+
+      const payload = {
+        business_name: form.business_name,
+        owner_name: form.owner_name,
+        full_name: form.owner_name,
+        mobile_number: form.mobile_number,
+        phone_number: form.mobile_number,
+        email: form.email,
+        email_verified: form.email_verified,
+        business_category: form.business_category,
+        category: form.business_category,
+        pickup_address: form.pickup_address,
+        warehouse_address: form.warehouse_address,
+        city: form.city,
+        state: form.state,
+        pincode: form.pincode,
+        gstin: form.gstin,
+        fssai_license_number: form.fssai_license_number,
+        fssai_certificate_url: form.fssai_certificate_url,
+        fssai_expiry_date: form.fssai_expiry_date || null,
+        fssai_status: newFssaiStatus,
+        phonepay_number: form.phonepay_number,
+        phonepay_no: form.phonepay_number,
+        business_logo_url: form.business_logo_url,
+        profile_photo: form.business_logo_url,
+        profile_photo_url: form.profile_photo_url,
+        business_description: form.business_description,
+        settings_completion_pct: updatedPct,
+        updated_at: new Date().toISOString()
+      };
+
       const { error } = await supabase
         .from("sellers")
-        .update({
-          business_name: form.business_name,
-          owner_name: form.owner_name,
-          mobile_number: form.mobile_number,
-          pickup_address: form.pickup_address,
-          warehouse_address: form.warehouse_address,
-          city: form.city,
-          state: form.state,
-          pincode: form.pincode,
-          gstin: form.gstin,
-          pan_number: form.pan_number,
-          bank_account_number: form.bank_account_number,
-          bank_ifsc: form.bank_ifsc,
-          bank_name: form.bank_name,
-        })
+        .update(payload)
         .eq("user_id", user.id);
 
       if (error) throw error;
-      setStatusMsg("✅ Business profile & bank details saved successfully!");
-      setTimeout(() => setStatusMsg(""), 3000);
+
+      // Log verification audit action if FSSAI submitted
+      if (newFssaiStatus === "Pending Verification" && sellerId) {
+        await supabase.from("merchant_verification_logs").insert({
+          seller_id: sellerId,
+          action: "SUBMITTED_FSSAI",
+          performed_by: user.id,
+          performer_role: "seller",
+          notes: `Submitted FSSAI License Number ${form.fssai_license_number} for verification.`,
+          metadata: { license_number: form.fssai_license_number, expiry: form.fssai_expiry_date }
+        });
+      }
+
+      setForm(prev => ({ ...prev, fssai_status: newFssaiStatus }));
+      setStatusMsg("✅ Merchant Settings saved successfully!");
+      setTimeout(() => setStatusMsg(""), 4000);
     } catch (err: any) {
-      alert(err.message || "Failed to save settings.");
+      alert(err.message || "Failed to save Merchant Settings.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-emerald-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight">Merchant Settings</h1>
-        <p className="text-xs font-bold text-text-secondary mt-1">
-          Manage your registered business info, tax IDs, payout bank account, and pickup details.
-        </p>
+    <div className="space-y-6 max-w-5xl">
+      {/* Header & Completion Progress */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Merchant Settings</h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Complete your merchant business profile, Brevo email verification, and FSSAI license to enable product management.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2.5 rounded-xl shadow-sm">
+          <div className="text-right">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Completion</span>
+            <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">{completionPct}%</span>
+          </div>
+          <div className="w-20 bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+            <div className="bg-emerald-600 h-full transition-all duration-500" style={{ width: `${completionPct}%` }} />
+          </div>
+        </div>
       </div>
 
+      {/* Completion Warning Banner */}
+      {completionPct < 100 && (
+        <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 p-4 flex items-center gap-3 text-xs font-semibold text-amber-800 dark:text-amber-300">
+          <AlertTriangle size={18} className="shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <strong>Action Required:</strong> Your Merchant Settings are {completionPct}% complete. Please fill in all required business details and submit your 14-digit FSSAI License to unlock product publishing.
+          </div>
+        </div>
+      )}
+
       {statusMsg && (
-        <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100 text-xs font-black text-emerald-700 dark:text-emerald-400">
+        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
           {statusMsg}
         </div>
       )}
 
       <form onSubmit={handleSaveSettings} className="space-y-6">
         {/* Business Profile */}
-        <div className="rounded-[2.5rem] bg-foreground/[0.03] border border-foreground/[0.06] p-6 backdrop-blur-xl space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Building2 className="text-primary" size={20} />
-            <h2 className="text-base font-black">Business Profile</h2>
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <Building2 className="text-emerald-600" size={18} />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Business & Owner Identity</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Business Name</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Name *</label>
               <input
                 type="text"
                 required
                 value={form.business_name}
-                onChange={(e) => setForm({ ...form, business_name: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
+                onChange={e => setForm({ ...form, business_name: e.target.value })}
+                placeholder="e.g. Asali Swad Spices"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+
             <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Owner Name</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Owner Name *</label>
               <input
                 type="text"
                 required
                 value={form.owner_name}
-                onChange={(e) => setForm({ ...form, owner_name: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
+                onChange={e => setForm({ ...form, owner_name: e.target.value })}
+                placeholder="Full Owner Name"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+
+            {/* Email & Brevo OTP Verification */}
             <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Mobile Number</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Email Address *</label>
+                {form.email_verified ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 size={12} /> Email Verified
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Unverified</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value, email_verified: false })}
+                  placeholder="merchant@example.com"
+                  className="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {!form.email_verified && (
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={sendingOtp}
+                    className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shrink-0 transition-colors disabled:opacity-50"
+                  >
+                    {sendingOtp ? "Sending..." : "Verify OTP"}
+                  </button>
+                )}
+              </div>
+
+              {/* OTP Input UI */}
+              {otpSent && !form.email_verified && (
+                <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-800/80 rounded-lg border border-slate-200 dark:border-slate-700 space-y-2">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                    Enter 6-digit OTP code sent via Brevo to <strong>{form.email}</strong>:
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={e => setOtpCode(e.target.value)}
+                      placeholder="e.g. 123456"
+                      className="w-32 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-bold tracking-widest text-center outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyOtp}
+                      disabled={verifyingOtp}
+                      className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {verifyingOtp ? "Checking..." : "Submit OTP"}
+                    </button>
+                  </div>
+                  {otpError && <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">{otpError}</p>}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Mobile Number *</label>
               <input
-                type="text"
+                type="tel"
                 required
                 value={form.mobile_number}
-                onChange={(e) => setForm({ ...form, mobile_number: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
+                onChange={e => setForm({ ...form, mobile_number: e.target.value })}
+                placeholder="+91 98765 43210"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+
             <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Registered Email (Read only)</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Category *</label>
+              <select
+                value={form.business_category}
+                onChange={e => setForm({ ...form, business_category: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Grocery">Grocery</option>
+                <option value="Snacks">Snacks</option>
+                <option value="Bakery">Bakery</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">GSTIN Number (Optional)</label>
               <input
-                type="email"
-                disabled
-                value={form.email}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-100/50 dark:bg-slate-800/50 px-4 py-3 text-xs font-bold outline-none text-text-muted cursor-not-allowed"
+                type="text"
+                value={form.gstin}
+                onChange={e => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
+                placeholder="22AAAAA0000A1Z5"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium uppercase outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
         </div>
 
-        {/* GSTIN & Bank Details */}
-        <div className="rounded-[2.5rem] bg-foreground/[0.03] border border-foreground/[0.06] p-6 backdrop-blur-xl space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <CreditCard className="text-primary" size={20} />
-            <h2 className="text-base font-black">Tax & Bank Payout Details</h2>
+        {/* FSSAI License & Verification System */}
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="text-emerald-600" size={18} />
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">FSSAI License Verification *</h2>
+            </div>
+            <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase ${
+              form.fssai_status === 'Verified' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+              form.fssai_status === 'Pending Verification' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+              form.fssai_status === 'Rejected' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+              'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+            }`}>
+              Status: {form.fssai_status}
+            </span>
+          </div>
+
+          {form.fssai_status === "Rejected" && form.fssai_rejection_reason && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-800 text-xs font-medium text-rose-800 dark:text-rose-300 flex items-start gap-2">
+              <XCircle size={16} className="shrink-0 mt-0.5 text-rose-600" />
+              <div>
+                <strong>Rejection Reason:</strong> {form.fssai_rejection_reason}
+                <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-400">Please re-check your 14-digit license number and upload a clear certificate document under 50 KB.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">FSSAI License Number (14 Digits) *</label>
+              <input
+                type="text"
+                required
+                maxLength={14}
+                value={form.fssai_license_number}
+                onChange={e => setForm({ ...form, fssai_license_number: e.target.value.replace(/\D/g, '') })}
+                placeholder="e.g. 10021022000123"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-bold tracking-wider outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Must contain exactly 14 numeric digits.</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">License Expiry Date (Optional)</label>
+              <input
+                type="date"
+                value={form.fssai_expiry_date}
+                onChange={e => setForm({ ...form, fssai_expiry_date: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Upload FSSAI Certificate Document (PDF / JPG / PNG - Max 50 KB) *</label>
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleFssaiFileChange}
+                  className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 dark:file:bg-emerald-950/50 dark:file:text-emerald-300 hover:file:bg-emerald-100"
+                />
+                {form.fssai_certificate_url && (
+                  <a
+                    href={form.fssai_certificate_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-semibold text-emerald-600 hover:underline shrink-0 flex items-center gap-1"
+                  >
+                    <FileText size={14} /> Preview Uploaded Certificate
+                  </a>
+                )}
+              </div>
+              {fssaiUploadError && (
+                <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5">{fssaiUploadError}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Addresses & Dispatch */}
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <MapPin className="text-emerald-600" size={18} />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Addresses & Dispatch Locations</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">GSTIN Number</label>
-              <input
-                type="text"
-                placeholder="22AAAAA0000A1Z5"
-                value={form.gstin}
-                onChange={(e) => setForm({ ...form, gstin: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">PAN Number</label>
-              <input
-                type="text"
-                placeholder="ABCDE1234F"
-                value={form.pan_number}
-                onChange={(e) => setForm({ ...form, pan_number: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Bank Account Number</label>
-              <input
-                type="text"
-                placeholder="Account Number"
-                value={form.bank_account_number}
-                onChange={(e) => setForm({ ...form, bank_account_number: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Bank IFSC Code</label>
-              <input
-                type="text"
-                placeholder="SBIN0001234"
-                value={form.bank_ifsc}
-                onChange={(e) => setForm({ ...form, bank_ifsc: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Pickup & Warehouse Address */}
-        <div className="rounded-[2.5rem] bg-foreground/[0.03] border border-foreground/[0.06] p-6 backdrop-blur-xl space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <MapPin className="text-primary" size={20} />
-            <h2 className="text-base font-black">Pickup & Warehouse Address</h2>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-black uppercase text-text-muted mb-1 block">Pickup Address</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Pickup Address *</label>
               <textarea
+                required
                 rows={2}
                 value={form.pickup_address}
-                onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
-                className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs font-bold outline-none"
+                onChange={e => setForm({ ...form, pickup_address: e.target.value })}
+                placeholder="Full address where order courier pickup takes place"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs font-black uppercase text-text-muted mb-1 block">City</label>
-                <input
-                  type="text"
-                  value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2.5 text-xs font-bold outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-black uppercase text-text-muted mb-1 block">State</label>
-                <input
-                  type="text"
-                  value={form.state}
-                  onChange={(e) => setForm({ ...form, state: e.target.value })}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2.5 text-xs font-bold outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-black uppercase text-text-muted mb-1 block">Pincode</label>
-                <input
-                  type="text"
-                  value={form.pincode}
-                  onChange={(e) => setForm({ ...form, pincode: e.target.value })}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-3 py-2.5 text-xs font-bold outline-none"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Danger Zone: Account Deletion */}
-        <div className="rounded-[2.5rem] bg-rose-500/5 border border-rose-500/20 p-6 backdrop-blur-xl space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-400">
-              <AlertTriangle size={20} />
-            </div>
             <div>
-              <h2 className="text-base font-black text-rose-600 dark:text-rose-400">Danger Zone: Account Deletion</h2>
-              <p className="text-xs font-bold text-text-muted mt-0.5">
-                Initiates a mandatory 15-day hold period before permanent seller account deletion.
-              </p>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Warehouse Address *</label>
+              <textarea
+                required
+                rows={2}
+                value={form.warehouse_address}
+                onChange={e => setForm({ ...form, warehouse_address: e.target.value })}
+                placeholder="Warehouse or stock storage address"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">City *</label>
+              <input
+                type="text"
+                required
+                value={form.city}
+                onChange={e => setForm({ ...form, city: e.target.value })}
+                placeholder="City"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">State *</label>
+              <input
+                type="text"
+                required
+                value={form.state}
+                onChange={e => setForm({ ...form, state: e.target.value })}
+                placeholder="State"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">PIN Code *</label>
+              <input
+                type="text"
+                required
+                value={form.pincode}
+                onChange={e => setForm({ ...form, pincode: e.target.value })}
+                placeholder="6-digit PIN code"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
           </div>
-
-          {deleteRequested ? (
-            <div className="rounded-2xl bg-rose-500/10 border border-rose-500/30 p-4 text-xs font-bold text-rose-600 dark:text-rose-300 space-y-3">
-              <p>
-                ⚠️ <strong>Deletion Pending:</strong> Your seller account is scheduled for permanent deletion on{" "}
-                <span className="font-black text-rose-500">
-                  {deleteDate ? new Date(deleteDate).toLocaleDateString("en-IN", { dateStyle: "full" }) : "15 days"}
-                </span>.
-              </p>
-              <button
-                type="button"
-                onClick={handleCancelDeletion}
-                disabled={deleting}
-                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition uppercase tracking-wider"
-              >
-                {deleting ? "Processing..." : "Cancel Deletion Request"}
-              </button>
-            </div>
-          ) : (
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={handleRequestDeletion}
-                disabled={deleting}
-                className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider shadow-lg hover:shadow-rose-600/20 transition flex items-center gap-2"
-              >
-                <Trash2 size={16} />
-                <span>{deleting ? "Submitting Request..." : "Request 15-Day Account Deletion"}</span>
-              </button>
-            </div>
-          )}
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-white text-sm font-black uppercase tracking-wider shadow-xl hover:opacity-90 disabled:opacity-50"
-        >
-          <Save size={18} />
-          <span>{saving ? "Saving Profile..." : "Save Merchant Settings"}</span>
-        </button>
+        {/* Payment & Branding */}
+        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <Phone className="text-emerald-600" size={18} />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Payment & Merchant Branding</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">PhonePe Mobile Number *</label>
+              <input
+                type="tel"
+                required
+                value={form.phonepay_number}
+                onChange={e => setForm({ ...form, phonepay_number: e.target.value })}
+                placeholder="Registered PhonePe number for payouts"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Logo URL *</label>
+              <input
+                type="url"
+                required
+                value={form.business_logo_url}
+                onChange={e => setForm({ ...form, business_logo_url: e.target.value })}
+                placeholder="https://... logo image link"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Profile Photo URL (Optional)</label>
+              <input
+                type="url"
+                value={form.profile_photo_url}
+                onChange={e => setForm({ ...form, profile_photo_url: e.target.value })}
+                placeholder="https://... profile photo link"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Description *</label>
+              <textarea
+                required
+                rows={2}
+                value={form.business_description}
+                onChange={e => setForm({ ...form, business_description: e.target.value })}
+                placeholder="Short bio / description of your store & products"
+                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Read-Only Account Metadata */}
+        <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 text-xs flex flex-col sm:flex-row justify-between gap-4 text-slate-500 dark:text-slate-400">
+          <div>
+            <strong>Account Status:</strong> <span className="font-bold text-slate-800 dark:text-slate-200">{form.account_status}</span>
+          </div>
+          <div>
+            <strong>Registration Date:</strong> {form.created_at ? new Date(form.created_at).toLocaleDateString() : 'N/A'}
+          </div>
+          <div>
+            <strong>Last Updated:</strong> {form.updated_at ? new Date(form.updated_at).toLocaleString() : 'N/A'}
+          </div>
+        </div>
+
+        {/* Submit */}
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-50"
+          >
+            <Save size={16} />
+            {saving ? "Saving Merchant Settings..." : "Save Merchant Settings"}
+          </button>
+        </div>
       </form>
     </div>
   );
