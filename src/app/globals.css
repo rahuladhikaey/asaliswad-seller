@@ -46,3 +46,31 @@ body {
 	background: var(--background);
 	color: var(--foreground);
 }
+
+/* High Contrast Input & Form Styles */
+input, textarea, select {
+	color: #0f172a;
+}
+
+input::placeholder, textarea::placeholder {
+	color: #64748b;
+}
+
+input.bg-white, input.bg-slate-50, input.bg-slate-100,
+select.bg-white, select.bg-slate-50, select.bg-slate-100,
+textarea.bg-white, textarea.bg-slate-50, textarea.bg-slate-100,
+.focus\:bg-white:focus, .focus\:bg-slate-50:focus {
+	color: #0f172a !important;
+}
+
+.dark input, .dark textarea, .dark select {
+	color: #f8fafc;
+}
+
+.dark input.bg-white, .dark input.bg-slate-50, .dark input.bg-slate-100,
+.dark select.bg-white, .dark select.bg-slate-50, .dark select.bg-slate-100,
+.dark textarea.bg-white, .dark textarea.bg-slate-50, .dark textarea.bg-slate-100,
+.dark .focus\:bg-white:focus, .dark .focus\:bg-slate-50:focus {
+	color: #0f172a !important;
+}
+

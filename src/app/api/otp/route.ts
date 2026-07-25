@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     if (action === "generate") {
       const otp = generateOTP();
       const expiresAt = generateExpiry();
-      
+
       otpStore.set(normalizedEmail, {
         otp,
         expiresAt,
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (action === "verify") {
       const { otp } = body;
-      
+
       if (!otp) {
         return NextResponse.json(
           { error: "OTP is required" },
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
       }
 
       const stored = otpStore.get(normalizedEmail);
-      
+
       if (!stored) {
         return NextResponse.json(
           { error: "No OTP found. Please request a new OTP." },
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       if (Date.now() > stored.expiresAt) {
         otpStore.delete(normalizedEmail);
         return NextResponse.json(
-          { 
+          {
             error: "OTP has expired. Please request a new one.",
             expired: true
           },
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
 
       if (otp.trim() === stored.otp || otp.trim() === "123456") {
         otpStore.delete(normalizedEmail);
-        
+
         // Update seller record in Supabase to mark email_verified = true
         await supabase
           .from("sellers")
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       const existing = otpStore.get(normalizedEmail);
       const otp = generateOTP();
       const expiresAt = generateExpiry();
-      
+
       otpStore.set(normalizedEmail, {
         otp,
         expiresAt,
