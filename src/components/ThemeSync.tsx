@@ -1,13 +1,18 @@
 "use client";
 import { useEffect } from "react";
-import { useThemeStore } from "@/store/theme";
 
 export function ThemeSync() {
-	const dark = useThemeStore((state) => state.dark);
-
 	useEffect(() => {
-		document.documentElement.classList.toggle("dark", dark);
-	}, [dark]);
+		document.documentElement.classList.remove("dark");
+		if (typeof window !== "undefined") {
+			try {
+				localStorage.removeItem("theme-storage");
+				localStorage.removeItem("theme");
+			} catch (e) {
+				// ignore
+			}
+		}
+	}, []);
 
 	return null;
 }
