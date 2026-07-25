@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
+import { syncProductToCustomerDb } from "@shared/utils/dualDatabaseSync";
 import type { Product, Category } from "@shared/types";
 import { 
   Plus, 
@@ -248,6 +249,7 @@ export default function SellerProducts() {
 
       if (error) throw error;
       
+      await syncProductToCustomerDb({ id: productId }, 'delete');
       setProducts(products.filter(p => p.id !== productId));
       alert("Product deleted successfully.");
     } catch (e: any) {
@@ -325,21 +327,30 @@ export default function SellerProducts() {
     };
 
     try {
+      let savedProduct: any = null;
       if (editingProduct) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("products")
           .update(payload)
-          .eq("id", editingProduct.id);
+          .eq("id", editingProduct.id)
+          .select();
 
         if (error) throw error;
+        savedProduct = data?.[0] || { id: editingProduct.id, ...payload };
         setStatusMessage("✅ Product updated successfully!");
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("products")
-          .insert([payload]);
+          .insert([payload])
+          .select();
 
         if (error) throw error;
+        savedProduct = data?.[0] || payload;
         setStatusMessage("✅ Product added successfully!");
+      }
+
+      if (savedProduct) {
+        await syncProductToCustomerDb(savedProduct, 'upsert');
       }
 
       setTimeout(() => {
