@@ -403,13 +403,13 @@ export default function SellerSettings() {
                       value={otpCode}
                       onChange={e => setOtpCode(e.target.value)}
                       placeholder="e.g. 123456"
-                      className="w-32 rounded-md border border-slate-300 dark:border-slate-700 px-3 py-1.5 text-xs font-bold tracking-widest text-center outline-none focus:ring-2 focus:ring-emerald-500"
+                      className="w-36 rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-white text-slate-900 px-3 py-2 text-sm font-black tracking-widest text-center outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm"
                     />
                     <button
                       type="button"
                       onClick={handleVerifyOtp}
                       disabled={verifyingOtp}
-                      className="px-4 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                      className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors disabled:opacity-50 shadow-sm cursor-pointer"
                     >
                       {verifyingOtp ? "Checking..." : "Submit OTP"}
                     </button>

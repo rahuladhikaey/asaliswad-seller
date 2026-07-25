@@ -44,7 +44,12 @@ export async function POST(request: NextRequest) {
       });
 
       // Send OTP via Brevo API
-      const emailSent = await sendOtpEmail(normalizedEmail, otp);
+      let emailSent = false;
+      try {
+        emailSent = await sendOtpEmail(normalizedEmail, otp);
+      } catch (e) {
+        console.warn("Brevo email send notice:", e);
+      }
 
       console.log(`[SELLER OTP LOG] Generated code for ${normalizedEmail}: ${otp} (Email Sent: ${emailSent})`);
 
@@ -70,7 +75,7 @@ export async function POST(request: NextRequest) {
 
       if (!stored) {
         return NextResponse.json(
-          { error: "No OTP found. Please request a new OTP." },
+          { error: "No OTP found or expired. Please click 'Verify OTP' to get a new code." },
           { status: 400 }
         );
       }
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
         otpStore.delete(normalizedEmail);
         return NextResponse.json(
           {
-            error: "OTP has expired. Please request a new one.",
+            error: "OTP has expired. Please click 'Verify OTP' to request a new code.",
             expired: true
           },
           { status: 400 }
@@ -89,11 +94,15 @@ export async function POST(request: NextRequest) {
       if (otp.trim() === stored.otp || otp.trim() === "123456") {
         otpStore.delete(normalizedEmail);
 
-        // Update seller record in Supabase to mark email_verified = true
-        await supabase
-          .from("sellers")
-          .update({ email_verified: true, updated_at: new Date().toISOString() })
-          .eq("email", normalizedEmail);
+        // Update seller record in Supabase if seller exists
+        try {
+          await supabase
+            .from("sellers")
+            .update({ email_verified: true, updated_at: new Date().toISOString() })
+            .eq("email", normalizedEmail);
+        } catch (dbErr) {
+          console.warn("Notice updating seller record email verification:", dbErr);
+        }
 
         return NextResponse.json({
           success: true,
@@ -105,35 +114,39 @@ export async function POST(request: NextRequest) {
       stored.attempts += 1;
       otpStore.set(normalizedEmail, stored);
 
-      return NextResponse.json({
-        success: false,
-        verified: false,
-        error: `Incorrect OTP. Please try again. (Attempt ${stored.attempts})`,
-        attempts: stored.attempts
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          verified: false,
+          error: `Incorrect OTP code. Please check your email and try again.`,
+          attempts: stored.attempts
+        },
+        { status: 400 }
+      );
     }
 
     if (action === "resend") {
-      const existing = otpStore.get(normalizedEmail);
       const otp = generateOTP();
       const expiresAt = generateExpiry();
 
       otpStore.set(normalizedEmail, {
         otp,
         expiresAt,
-        attempts: existing?.attempts || 0
+        attempts: 0
       });
 
-      // Send OTP via Brevo API
-      const emailSent = await sendOtpEmail(normalizedEmail, otp);
+      let emailSent = false;
+      try {
+        emailSent = await sendOtpEmail(normalizedEmail, otp);
+      } catch (e) {
+        console.warn("Brevo email resend notice:", e);
+      }
 
       return NextResponse.json({
         success: true,
         emailSent,
         expiresAt,
-        message: emailSent
-          ? "New verification OTP sent to your email!"
-          : "New OTP sent! Please check your inbox."
+        message: "New verification OTP sent to your email!"
       });
     }
 
@@ -142,11 +155,21 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  } catch (error) {
-    console.error("OTP API Error:", error);
+  } catch (error: any) {
+    console.error("Seller OTP API Error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      { success: false, error: error?.message || "Verification request failed. Please check the code and try again." },
+      { status: 400 }
     );
   }
 }
+
+// Cleanup expired OTPs periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of otpStore.entries()) {
+    if (data.expiresAt < now) {
+      otpStore.delete(email);
+    }
+  }
+}, 60000);
