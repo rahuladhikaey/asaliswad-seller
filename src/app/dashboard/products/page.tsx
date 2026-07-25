@@ -113,15 +113,38 @@ export default function SellerProducts() {
         .eq("seller_id", user.id)
         .order("created_at", { ascending: false });
 
-      // Fetch active categories for dropdown
-      const { data: categoriesData } = await supabase
-        .from("categories")
-        .select("*")
-        .eq("is_active", true)
-        .order("name", { ascending: true });
+      // Fetch categories for dropdown without restrictive filters + fallback list
+      let finalCategories: any[] = [];
+      try {
+        const { data: categoriesData } = await supabase
+          .from("categories")
+          .select("*")
+          .order("name", { ascending: true });
+
+        if (categoriesData && categoriesData.length > 0) {
+          finalCategories = categoriesData;
+        }
+      } catch (err) {
+        console.warn("Seller categories fetch notice:", err);
+      }
+
+      if (finalCategories.length === 0) {
+        finalCategories = [
+          { id: 1, name: "Spices & Masala", main_category: "Grocery" },
+          { id: 2, name: "Handmade Bori", main_category: "Snacks" },
+          { id: 3, name: "Pulses & Dals", main_category: "Grocery" },
+          { id: 4, name: "Pure Oils & Ghee", main_category: "Oils & Ghee" },
+          { id: 5, name: "Rice & Grains", main_category: "Grocery" },
+          { id: 6, name: "Pickles & Chutney", main_category: "Snacks" },
+          { id: 7, name: "Fresh Breads & Buns", main_category: "Bakery" },
+          { id: 8, name: "Cakes & Pastries", main_category: "Bakery" },
+          { id: 9, name: "Namkeen & Chips", main_category: "Snacks" },
+          { id: 10, name: "Organic Specials", main_category: "Organic Specials" }
+        ];
+      }
 
       setProducts(productsData || []);
-      setCategories(categoriesData || []);
+      setCategories(finalCategories);
     } catch (e) {
       console.error("Error loading products:", e);
     } finally {
@@ -515,12 +538,16 @@ export default function SellerProducts() {
                   <div>
                     <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Category *</label>
                     <select
+                      required
                       value={form.category_id}
                       onChange={e => setForm({...form, category_id: e.target.value})}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
                     >
-                      {categories.map((c: Category) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                      <option value="">Select Category</option>
+                      {categories.map((c: any) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.main_category ? `(${c.main_category})` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
