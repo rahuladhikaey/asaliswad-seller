@@ -33,27 +33,49 @@ export async function POST(request: NextRequest) {
         user = authData.user;
       } else if (createError) {
         const errMsg = createError.message?.toLowerCase() || "";
-        if (errMsg.includes("already registered") || errMsg.includes("duplicate")) {
-          // User already exists, try fallback sign in or standard sign up
-          const signUpRes = await supabaseServer.auth.signUp({
-            email: normalizedEmail,
-            password,
-            options: {
-              data: { full_name: fullName, role: "seller", phone: phone }
+        if (errMsg.includes("already registered") || errMsg.includes("duplicate") || errMsg.includes("exists")) {
+          // User already exists in auth.users: locate user and update password/metadata cleanly
+          const { data: listData } = await supabaseServer.auth.admin.listUsers();
+          const existingUser = listData?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
+
+          if (existingUser) {
+            const { data: updatedData, error: updateError } = await supabaseServer.auth.admin.updateUserById(existingUser.id, {
+              password: password,
+              email_confirm: true,
+              user_metadata: {
+                ...existingUser.user_metadata,
+                full_name: fullName || existingUser.user_metadata?.full_name || "Seller",
+                role: "seller",
+                phone: phone || existingUser.phone || "",
+              },
+            });
+            if (!updateError && updatedData?.user) {
+              user = updatedData.user;
+            } else {
+              user = existingUser;
             }
-          });
-          if (signUpRes.error) {
-            return NextResponse.json({ success: false, error: "Account already exists for this email. Please log in directly." }, { status: 400 });
+          } else {
+            // Standard signup fallback
+            const signUpRes = await supabaseServer.auth.signUp({
+              email: normalizedEmail,
+              password,
+              options: {
+                data: { full_name: fullName, role: "seller", phone: phone },
+              },
+            });
+            if (signUpRes.error) {
+              return NextResponse.json({ success: false, error: signUpRes.error.message }, { status: 400 });
+            }
+            user = signUpRes.data.user;
           }
-          user = signUpRes.data.user;
         } else {
           // Standard signup fallback
           const signUpRes = await supabaseServer.auth.signUp({
             email: normalizedEmail,
             password,
             options: {
-              data: { full_name: fullName, role: "seller", phone: phone }
-            }
+              data: { full_name: fullName, role: "seller", phone: phone },
+            },
           });
           if (signUpRes.error) {
             return NextResponse.json({ success: false, error: signUpRes.error.message }, { status: 400 });
@@ -67,13 +89,29 @@ export async function POST(request: NextRequest) {
         email: normalizedEmail,
         password,
         options: {
-          data: { full_name: fullName, role: "seller", phone: phone }
-        }
+          data: { full_name: fullName, role: "seller", phone: phone },
+        },
       });
       if (signUpRes.error) {
         return NextResponse.json({ success: false, error: signUpRes.error.message }, { status: 400 });
       }
       user = signUpRes.data.user;
+    }
+
+    // Upsert role in public.profiles table
+    if (user?.id) {
+      try {
+        await supabaseServer.from("profiles").upsert({
+          id: user.id,
+          email: normalizedEmail,
+          full_name: fullName || "Seller",
+          role: "seller",
+          status: "active",
+          updated_at: new Date().toISOString(),
+        });
+      } catch (profErr) {
+        console.warn("Profiles role upsert notice:", profErr);
+      }
     }
 
     return NextResponse.json({
