@@ -103,6 +103,21 @@ export default function SellerPaymentsPage() {
     if (sellerUser) {
       localStorage.setItem(`seller_payment_config_${sellerUser.id}`, JSON.stringify(paymentConfig));
       
+      // Update sellers database table in Supabase DB for production admin visibility
+      try {
+        await supabase
+          .from("sellers")
+          .update({
+            upi_id: paymentConfig.upi_id,
+            phonepay_no: paymentConfig.upi_id,
+            phonepay_number: paymentConfig.upi_id,
+            updated_at: new Date().toISOString()
+          })
+          .eq("user_id", sellerUser.id);
+      } catch (e) {
+        console.warn("Could not save payment info to sellers table:", e);
+      }
+
       // Update Supabase user metadata if possible
       try {
         await supabase.auth.updateUser({
