@@ -154,6 +154,35 @@ export default function SellerProducts() {
 
   useEffect(() => {
     loadData();
+
+    let channel: any;
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel('products-seller-changes')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'sellers', filter: `user_id=eq.${user.id}` },
+          (payload) => {
+            if (payload.new) {
+              const fStatus = payload.new.fssai_status || "Not Submitted";
+              const pct = payload.new.settings_completion_pct || 0;
+              setFssaiStatus(fStatus);
+              setSettingsCompletionPct(pct);
+              setIsSettingsComplete(pct === 100 && fStatus === 'Verified');
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtime();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {

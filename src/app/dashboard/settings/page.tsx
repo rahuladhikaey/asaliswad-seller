@@ -114,6 +114,36 @@ export default function SellerSettings() {
 
   useEffect(() => {
     loadProfile();
+
+    let channel: any;
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channel = supabase
+        .channel('settings-seller-changes')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'sellers', filter: `user_id=eq.${user.id}` },
+          (payload) => {
+            if (payload.new) {
+              setForm(prev => ({
+                ...prev,
+                fssai_status: payload.new.fssai_status || "Not Submitted",
+                fssai_rejection_reason: payload.new.fssai_rejection_reason || "",
+                account_status: payload.new.account_status || payload.new.status || "Active"
+              }));
+            }
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtime();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   const completionPct = calculateMerchantCompletion(form);
