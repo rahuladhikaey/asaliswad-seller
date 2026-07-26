@@ -210,10 +210,22 @@ export default function SellerSettings() {
         }
       }
 
-      // Automatically determine FSSAI status: if license and document exist and previously Not Submitted/Rejected, set to Pending Verification
-      let newFssaiStatus = form.fssai_status;
+      // Fetch latest seller status from DB first to prevent overwriting admin verification
+      const { data: currentSeller } = await supabase
+        .from("sellers")
+        .select("fssai_status, fssai_license_number, fssai_certificate_url")
+        .eq("user_id", user.id)
+        .single();
+
+      let newFssaiStatus = currentSeller?.fssai_status || form.fssai_status;
+
+      // If the seller CHANGED the license number or certificate, it goes back to Pending Verification
+      const fssaiChanged = 
+        currentSeller?.fssai_license_number !== form.fssai_license_number ||
+        currentSeller?.fssai_certificate_url !== form.fssai_certificate_url;
+
       if (form.fssai_license_number && form.fssai_certificate_url) {
-        if (form.fssai_status === "Not Submitted" || form.fssai_status === "Rejected") {
+        if (newFssaiStatus === "Not Submitted" || newFssaiStatus === "Rejected" || (newFssaiStatus === "Verified" && fssaiChanged)) {
           newFssaiStatus = "Pending Verification";
         }
       }
