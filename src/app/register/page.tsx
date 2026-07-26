@@ -122,10 +122,11 @@ export default function SellerRegisterPage() {
         console.warn("Auth signup exception handled:", authCatchErr);
       }
 
+      const isValidUuid = (val: any) => typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      const validUserId = isValidUuid(userId) ? userId : null;
       const generatedSellerCode = `SEL-${Math.floor(100000 + Math.random() * 900000)}`;
-      const sellerRecord = {
-        id: userId || `seller-${Date.now()}`,
-        user_id: userId || `seller-${Date.now()}`,
+
+      const sellerPayload: any = {
         seller_id: generatedSellerCode,
         full_name: fullName.trim(),
         owner_name: fullName.trim(),
@@ -148,27 +149,54 @@ export default function SellerRegisterPage() {
         created_at: new Date().toISOString(),
       };
 
-      const { error: sellerError } = await supabase.from("sellers").insert([sellerRecord]);
+      if (validUserId) {
+        sellerPayload.id = validUserId;
+        sellerPayload.user_id = validUserId;
+      }
+
+      let createdSellerId: string | null = validUserId;
+
+      const { data: insertedData, error: sellerError } = await supabase
+        .from("sellers")
+        .insert([sellerPayload])
+        .select();
+
       if (sellerError) {
-        console.warn("Seller profile creation notice:", sellerError);
+        console.warn("Primary seller insert notice, retrying fallback insert:", sellerError);
+        delete sellerPayload.id;
+        delete sellerPayload.user_id;
+        const { data: retryData, error: retryError } = await supabase
+          .from("sellers")
+          .insert([sellerPayload])
+          .select();
+
+        if (retryError) {
+          console.error("Seller profile creation error:", retryError);
+        } else if (retryData && retryData.length > 0) {
+          createdSellerId = retryData[0].id;
+        }
+      } else if (insertedData && insertedData.length > 0) {
+        createdSellerId = insertedData[0].id;
       }
 
       // Persist pickup location
-      try {
-        await supabase.from("seller_pickup_locations").insert([{
-          seller_id: sellerRecord.id,
-          name: `${fullName} Main Warehouse`,
-          location_name: pickupLocation,
-          phone: mobileNumber,
-          email: email,
-          address_line1: pickupLocation,
-          city: city || pickupLocation,
-          state: state || "Default State",
-          pincode: pincode || "000000",
-          is_default: true,
-        }]);
-      } catch (locErr) {
-        console.warn("Pickup location insert notice:", locErr);
+      if (createdSellerId) {
+        try {
+          await supabase.from("seller_pickup_locations").insert([{
+            seller_id: createdSellerId,
+            name: `${fullName} Main Warehouse`,
+            location_name: pickupLocation,
+            phone: mobileNumber,
+            email: email,
+            address_line1: pickupLocation,
+            city: city || pickupLocation,
+            state: state || "Default State",
+            pincode: pincode || "000000",
+            is_default: true,
+          }]);
+        } catch (locErr) {
+          console.warn("Pickup location insert notice:", locErr);
+        }
       }
 
       setStep("submitted");
