@@ -625,17 +625,6 @@ export default function SellerSettings() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Profile Photo URL (Optional)</label>
-              <input
-                type="url"
-                value={form.profile_photo_url}
-                onChange={e => setForm({ ...form, profile_photo_url: e.target.value })}
-                placeholder="https://... profile photo link"
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Description *</label>
               <textarea
                 required
