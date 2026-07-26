@@ -146,14 +146,30 @@ export default function SellerRegisterPage() {
           }),
         });
         const signupData = await signupRes.json();
-        if (signupRes.ok && signupData.success) {
-          userId = signupData.user?.id;
+        if (signupRes.ok && signupData.success && signupData.user?.id) {
+          userId = signupData.user.id;
         } else {
-          const { data: signInData } = await supabase.auth.signInWithPassword({
+          // Client-side fallback to supabase.auth.signUp
+          const { data: clientSignUpData } = await supabase.auth.signUp({
             email: normalizedEmail,
             password: password,
+            options: {
+              data: {
+                full_name: sellerName.trim(),
+                role: "seller",
+                phone: mobileNumber.trim(),
+              },
+            },
           });
-          userId = signInData?.user?.id;
+          if (clientSignUpData?.user?.id) {
+            userId = clientSignUpData.user.id;
+          } else {
+            const { data: signInData } = await supabase.auth.signInWithPassword({
+              email: normalizedEmail,
+              password: password,
+            });
+            userId = signInData?.user?.id;
+          }
         }
       } catch (authCatchErr) {
         console.warn("Auth signup notice:", authCatchErr);
@@ -161,9 +177,18 @@ export default function SellerRegisterPage() {
 
       const isValidUuid = (val: any) => typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
       const validUserId = isValidUuid(userId) ? userId : null;
+
+      if (!validUserId) {
+        setError("Could not verify your authentication account with Supabase Auth. Please try again.");
+        setLoading(false);
+        return;
+      }
+
       const generatedSellerCode = `SEL-${Math.floor(100000 + Math.random() * 900000)}`;
 
       const sellerPayload: any = {
+        id: validUserId,
+        user_id: validUserId,
         seller_id: generatedSellerCode,
         full_name: sellerName.trim(),
         owner_name: sellerName.trim(),
@@ -180,28 +205,30 @@ export default function SellerRegisterPage() {
         created_at: new Date().toISOString(),
       };
 
-      if (validUserId) {
-        sellerPayload.id = validUserId;
-        sellerPayload.user_id = validUserId;
-      }
-
-      let createdSellerId: string | null = validUserId ?? null;
-
-      const { data: insertedData, error: sellerError } = await supabase
+      // Check if seller already exists by email
+      const { data: existingSeller } = await supabase
         .from("sellers")
-        .insert([sellerPayload])
-        .select();
+        .select("id")
+        .eq("email", normalizedEmail)
+        .maybeSingle();
 
-      if (sellerError) {
-        console.warn("Seller insert retry:", sellerError);
-        delete sellerPayload.id;
-        delete sellerPayload.user_id;
-        const { data: retryData } = await supabase.from("sellers").insert([sellerPayload]).select();
-        if (retryData && retryData.length > 0) {
-          createdSellerId = retryData[0].id;
+      if (existingSeller) {
+        // Update existing seller row
+        await supabase
+          .from("sellers")
+          .update(sellerPayload)
+          .eq("email", normalizedEmail);
+      } else {
+        // Insert new seller row
+        const { error: sellerError } = await supabase
+          .from("sellers")
+          .insert([sellerPayload]);
+
+        if (sellerError && sellerPayload.id) {
+          // If insert with primary key id failed, retry without id column but keep user_id
+          delete sellerPayload.id;
+          await supabase.from("sellers").insert([sellerPayload]);
         }
-      } else if (insertedData && insertedData.length > 0) {
-        createdSellerId = insertedData[0].id;
       }
 
       setStep("submitted");

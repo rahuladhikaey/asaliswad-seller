@@ -28,31 +28,62 @@ function LoginContent() {
     setLoading(true);
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      let { data, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
       if (authError) {
-        setError(authError.message);
+        // Fallback: If initial sign in fails, attempt auto-sync with signup-verified for pre-existing sellers
+        try {
+          const syncRes = await fetch("/api/auth/signup-verified", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: email.trim(),
+              password: password,
+            }),
+          });
+          const syncData = await syncRes.json();
+          if (syncData.success && syncData.user?.id) {
+            const retryRes = await supabase.auth.signInWithPassword({
+              email: email.trim(),
+              password: password,
+            });
+            if (retryRes.data?.user) {
+              data = retryRes.data;
+              authError = null;
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Auto-sync notice on seller login:", syncErr);
+        }
+      }
+
+      if (authError || !data?.user) {
+        setError(authError?.message || "Invalid login credentials");
         setLoading(false);
         return;
       }
 
       const user = data.user;
-      const role = user?.user_metadata?.role || "customer";
 
-      if (role !== "seller" && role !== "admin") {
-        setError("Access Denied. This panel is reserved for registered sellers.");
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
+      // Link user_id in sellers table if missing
+      try {
+        await supabase
+          .from("sellers")
+          .update({ user_id: user.id })
+          .eq("email", email.trim().toLowerCase())
+          .is("user_id", null);
+      } catch (linkErr) {
+        console.warn("Notice linking user_id:", linkErr);
       }
 
+      // Check seller account status in public.sellers table
       const { data: sellerData } = await supabase
         .from("sellers")
         .select("status, rejection_reason")
-        .eq("user_id", user.id)
+        .eq("email", email.trim().toLowerCase())
         .maybeSingle();
 
       if (sellerData) {
