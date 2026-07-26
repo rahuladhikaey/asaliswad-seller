@@ -1,38 +1,60 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
-import { CheckCircle2, Building2, MapPin, KeyRound, ArrowRight, Tag, CreditCard } from "lucide-react";
+import { CheckCircle2, Store, User, Mail, Phone, Lock, Tag, Layers, ArrowRight, ShieldCheck } from "lucide-react";
+
+const CATEGORY_MAP: Record<string, string[]> = {
+  Grocery: ["Rice & Pulses", "Atta & Flour", "Spices & Seasoning", "Oils & Ghee", "Organic Specials"],
+  Snacks: ["Dry Fruits & Nuts", "Namkeen & Savories", "Biscuits & Cookies", "Mithai & Sweets", "Roasted Snacks"],
+  Bakery: ["Fresh Breads", "Rusk & Toast", "Cakes & Pastries", "Buns & Rolls"],
+  Beverages: ["Tea & Coffee", "Juices & Drinks", "Health Mixes"],
+  Spices: ["Whole Spices", "Powdered Spices", "Blended Masalas"]
+};
 
 export default function SellerRegisterPage() {
   const router = useRouter();
-  const [step, setStep] = useState<"info" | "address" | "otp" | "submitted">("info");
+  const [step, setStep] = useState<"info" | "otp" | "submitted">("info");
 
-  // Merchant Details
-  const [fullName, setFullName] = useState("");
+  // Required Fields
+  const [sellerName, setSellerName] = useState("");
+  const [shopName, setShopName] = useState("");
+  const [category, setCategory] = useState("Grocery");
+  const [subcategory, setSubcategory] = useState("Rice & Pulses");
   const [mobileNumber, setMobileNumber] = useState("");
   const [email, setEmail] = useState("");
-  const [upiId, setUpiId] = useState("");
-  const [category, setCategory] = useState("Grocery");
   const [password, setPassword] = useState("");
-
-  // Location & Address
-  const [pickupLocation, setPickupLocation] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [pincode, setPincode] = useState("");
 
   // OTP Verification
   const [otpInput, setOtpInput] = useState("");
-  const [generatedOtp, setGeneratedOtp] = useState("");
 
   // Form State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
+
+  // Available Subcategories based on selected Category
+  const subcategoryOptions = useMemo(() => {
+    return CATEGORY_MAP[category] || CATEGORY_MAP["Grocery"];
+  }, [category]);
+
+  // Password Strength Calculation
+  const passwordStrength = useMemo(() => {
+    if (!password) return { score: 0, label: "Empty", color: "bg-slate-300 dark:bg-slate-700" };
+    let score = 0;
+    if (password.length >= 6) score++;
+    if (password.length >= 8) score++;
+    if (/[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    if (score <= 2) return { score: 33, label: "Weak", color: "bg-rose-500" };
+    if (score <= 4) return { score: 66, label: "Medium", color: "bg-amber-500" };
+    return { score: 100, label: "Strong", color: "bg-emerald-500" };
+  }, [password]);
 
   const parseErrorMsg = (err: any): string => {
     if (!err) return "";
@@ -41,23 +63,35 @@ export default function SellerRegisterPage() {
     return "Registration encountered an issue. Please verify your details.";
   };
 
-  const handleSendOtp = async () => {
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError("");
+
+    if (!sellerName.trim() || !shopName.trim() || !mobileNumber.trim() || !email.trim() || !password) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
+      const normalizedEmail = email.trim().toLowerCase();
       const res = await fetch("/api/otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", email: targetEmail }),
+        body: JSON.stringify({ action: "generate", email: normalizedEmail }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.error || "Failed to send OTP.");
+        setError(data.error || "Failed to send OTP to email.");
         setLoading(false);
         return;
       }
-      setInfoMessage(`Verification OTP sent to ${targetEmail}! Please check your inbox.`);
+      setInfoMessage(`Verification OTP code sent to ${normalizedEmail}! Please check your email inbox.`);
       setStep("otp");
     } catch (err: any) {
       setError(parseErrorMsg(err) || "Failed to send OTP.");
@@ -69,41 +103,45 @@ export default function SellerRegisterPage() {
     e.preventDefault();
     setError("");
 
-    if (step === "otp") {
-      setLoading(true);
-      const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
-      try {
-        const verifyRes = await fetch("/api/otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "verify", email: targetEmail, otp: otpInput }),
-        });
-        const verifyData = await verifyRes.json();
-        if (!verifyRes.ok || !verifyData.success) {
-          setError(verifyData.error || "Invalid OTP entered. Please try again.");
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        setError("Failed to verify OTP. Please try again.");
-        setLoading(false);
-        return;
-      }
+    if (!otpInput.trim()) {
+      setError("Please enter the 6-digit OTP code sent to your email.");
+      return;
     }
 
     setLoading(true);
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Verify OTP Code
+    try {
+      const verifyRes = await fetch("/api/otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", email: normalizedEmail, otp: otpInput.trim() }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok || !verifyData.success) {
+        setError(verifyData.error || "Invalid OTP code. Please check your email and try again.");
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      setError("Failed to verify OTP. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    // 2. Register Merchant Credentials & Create Seller Record
     try {
       let userId: string | undefined = undefined;
 
       try {
-        const targetEmail = email.trim() || `${mobileNumber}@seller.asaliswad.com`;
         const signupRes = await fetch("/api/auth/signup-verified", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: targetEmail,
+            email: normalizedEmail,
             password: password,
-            fullName: fullName.trim(),
+            fullName: sellerName.trim(),
             phone: mobileNumber.trim(),
           }),
         });
@@ -111,15 +149,14 @@ export default function SellerRegisterPage() {
         if (signupRes.ok && signupData.success) {
           userId = signupData.user?.id;
         } else {
-          // Fallback to sign in if account already exists
           const { data: signInData } = await supabase.auth.signInWithPassword({
-            email: targetEmail,
+            email: normalizedEmail,
             password: password,
           });
           userId = signInData?.user?.id;
         }
       } catch (authCatchErr) {
-        console.warn("Auth signup exception handled:", authCatchErr);
+        console.warn("Auth signup notice:", authCatchErr);
       }
 
       const isValidUuid = (val: any) => typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
@@ -128,23 +165,17 @@ export default function SellerRegisterPage() {
 
       const sellerPayload: any = {
         seller_id: generatedSellerCode,
-        full_name: fullName.trim(),
-        owner_name: fullName.trim(),
-        business_name: `${fullName.trim()} Store`,
+        full_name: sellerName.trim(),
+        owner_name: sellerName.trim(),
+        business_name: shopName.trim(),
         mobile_number: mobileNumber.trim(),
         phone_number: mobileNumber.trim(),
-        email: email.trim() || `${mobileNumber}@seller.asaliswad.com`,
-        upi_id: upiId.trim() || null,
-        phonepay_no: upiId.trim() || null,
-        pickup_location: pickupLocation.trim(),
-        pickup_address: pickupLocation.trim(),
-        warehouse_address: pickupLocation.trim(),
-        city: city.trim() || pickupLocation.trim(),
-        state: state.trim() || "Default State",
-        pincode: pincode.trim() || "000000",
+        email: normalizedEmail,
         category: category,
+        business_category: `${category} - ${subcategory}`,
         status: "approved",
         account_status: "Active",
+        email_verified: true,
         delete_requested: false,
         created_at: new Date().toISOString(),
       };
@@ -162,123 +193,150 @@ export default function SellerRegisterPage() {
         .select();
 
       if (sellerError) {
-        console.warn("Primary seller insert notice, retrying fallback insert:", sellerError);
+        console.warn("Seller insert retry:", sellerError);
         delete sellerPayload.id;
         delete sellerPayload.user_id;
-        const { data: retryData, error: retryError } = await supabase
-          .from("sellers")
-          .insert([sellerPayload])
-          .select();
-
-        if (retryError) {
-          console.error("Seller profile creation error:", retryError);
-        } else if (retryData && retryData.length > 0) {
+        const { data: retryData } = await supabase.from("sellers").insert([sellerPayload]).select();
+        if (retryData && retryData.length > 0) {
           createdSellerId = retryData[0].id;
         }
       } else if (insertedData && insertedData.length > 0) {
         createdSellerId = insertedData[0].id;
       }
 
-      // Persist pickup location
-      if (createdSellerId) {
-        try {
-          await supabase.from("seller_pickup_locations").insert([{
-            seller_id: createdSellerId,
-            name: `${fullName} Main Warehouse`,
-            location_name: pickupLocation,
-            phone: mobileNumber,
-            email: email,
-            address_line1: pickupLocation,
-            city: city || pickupLocation,
-            state: state || "Default State",
-            pincode: pincode || "000000",
-            is_default: true,
-          }]);
-        } catch (locErr) {
-          console.warn("Pickup location insert notice:", locErr);
-        }
-      }
-
       setStep("submitted");
     } catch (err: any) {
-      console.error("Registration submit error:", err);
+      console.error("Registration error:", err);
       setError(parseErrorMsg(err));
     }
     setLoading(false);
   };
 
   return (
-    <main className="relative min-h-screen flex flex-col items-center justify-center p-4 text-foreground overflow-hidden">
-      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[120px] -z-10" />
-      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-accent/10 rounded-full blur-[120px] -z-10" />
+    <main className="relative min-h-screen flex flex-col items-center justify-center p-4 text-foreground overflow-hidden bg-slate-950">
+      <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-emerald-500/10 rounded-full blur-[120px] -z-10" />
+      <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-teal-500/10 rounded-full blur-[120px] -z-10" />
 
-      <div className="absolute top-10 right-10">
+      <div className="absolute top-8 right-8">
         <DarkModeToggle />
       </div>
 
       <div className="w-full max-w-xl">
-        <div className="rounded-[3rem] bg-foreground/[0.05] p-8 md:p-12 backdrop-blur-xl border border-foreground/[0.08] shadow-2xl flex flex-col">
+        <div className="rounded-[2.5rem] bg-slate-900/80 p-8 md:p-12 backdrop-blur-xl border border-slate-800 shadow-2xl flex flex-col">
+          {/* HEADER */}
           <div className="flex items-center justify-between mb-6">
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">
-              Merchant Registration
+            <span className="text-xs font-black uppercase tracking-[0.3em] text-emerald-400">
+              AsaliSwad Merchant Portal
             </span>
             <div className="flex gap-2">
-              <span className={`h-2.5 w-8 rounded-full ${step === "info" ? "bg-primary" : "bg-foreground/20"}`} />
-              <span className={`h-2.5 w-8 rounded-full ${step === "address" ? "bg-primary" : "bg-foreground/20"}`} />
-              <span className={`h-2.5 w-8 rounded-full ${step === "otp" ? "bg-primary" : "bg-foreground/20"}`} />
+              <span className={`h-2 w-8 rounded-full transition-all ${step === "info" ? "bg-emerald-500" : "bg-slate-800"}`} />
+              <span className={`h-2 w-8 rounded-full transition-all ${step === "otp" ? "bg-emerald-500" : "bg-slate-800"}`} />
             </div>
           </div>
 
           {step !== "submitted" && (
             <div className="mb-6">
-              <h1 className="text-2xl font-black tracking-tight">
-                {step === "info" && "Seller Account Details"}
-                {step === "address" && "Pickup & Merchant Category"}
-                {step === "otp" && "Phone OTP Verification"}
+              <h1 className="text-2xl font-black text-white tracking-tight">
+                {step === "info" && "Seller Account Registration"}
+                {step === "otp" && "Email OTP Verification"}
               </h1>
-              <p className="text-xs font-bold text-text-secondary mt-1">
-                {step === "info" && "Enter your full name, contact, UPI ID, and password."}
-                {step === "address" && "Select your category (Grocery/Snacks/Bakery) and pickup address."}
-                {step === "otp" && `Enter 6-digit OTP code sent to +91 ${mobileNumber}`}
+              <p className="text-xs font-semibold text-slate-400 mt-1">
+                {step === "info" && "Register your merchant details & pantry product category."}
+                {step === "otp" && `Enter 6-digit verification code sent to ${email}`}
               </p>
             </div>
           )}
 
-          {error && error.trim() !== "" && (
-            <div className="mb-6 rounded-2xl bg-rose-50 dark:bg-rose-950/30 p-4 border border-rose-100/50">
-              <p className="text-xs font-bold text-rose-700 dark:text-rose-400">
+          {error && (
+            <div className="mb-6 rounded-2xl bg-rose-950/40 p-4 border border-rose-800/50">
+              <p className="text-xs font-bold text-rose-400">
                 {error}
               </p>
             </div>
           )}
 
-          {/* STEP 1: MERCHANT INFO */}
+          {/* STEP 1: REGISTRATION FORM */}
           {step === "info" && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setStep("address");
-              }}
-            >
+            <form className="space-y-4" onSubmit={handleSendOtp}>
+              {/* Seller Name */}
               <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Full Name *
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                  <User size={14} className="text-emerald-400" />
+                  <span>Seller Name *</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Enter your full legal name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                  placeholder="Enter your full name"
+                  value={sellerName}
+                  onChange={(e) => setSellerName(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500"
                 />
               </div>
 
+              {/* Shop Name */}
+              <div>
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                  <Store size={14} className="text-emerald-400" />
+                  <span>Shop Name *</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Asali Swad Spices & Pantry"
+                  value={shopName}
+                  onChange={(e) => setShopName(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Category & Subcategory Selection */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    Phone Number (OTP Verified) *
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                    <Tag size={14} className="text-emerald-400" />
+                    <span>Sell by Category *</span>
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setCategory(newCat);
+                      setSubcategory(CATEGORY_MAP[newCat]?.[0] || "");
+                    }}
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="Grocery">Grocery</option>
+                    <option value="Snacks">Snacks & Sweets</option>
+                    <option value="Bakery">Bakery</option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Spices">Spices & Masalas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                    <Layers size={14} className="text-emerald-400" />
+                    <span>Subcategory *</span>
+                  </label>
+                  <select
+                    value={subcategory}
+                    onChange={(e) => setSubcategory(e.target.value)}
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    {subcategoryOptions.map((sub) => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Phone & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                    <Phone size={14} className="text-emerald-400" />
+                    <span>Phone Number *</span>
                   </label>
                   <input
                     type="tel"
@@ -286,213 +344,128 @@ export default function SellerRegisterPage() {
                     placeholder="+91 9876543210"
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500"
                   />
                 </div>
+
                 <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                    Email Address (Optional)
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
+                    <Mail size={14} className="text-emerald-400" />
+                    <span>Email (Verified) *</span>
                   </label>
                   <input
                     type="email"
+                    required
                     placeholder="seller@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                    className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
+              {/* Strong Password Input */}
               <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  UPI ID (For Weekly Payouts) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="name@upi / 9876543210@paytm"
-                  value={upiId}
-                  onChange={(e) => setUpiId(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Password *
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Lock size={14} className="text-emerald-400" />
+                    <span>Strong Password *</span>
+                  </span>
+                  {password && (
+                    <span className={`text-[10px] font-bold uppercase ${passwordStrength.label === "Strong" ? "text-emerald-400" : passwordStrength.label === "Medium" ? "text-amber-400" : "text-rose-400"}`}>
+                      {passwordStrength.label} Password
+                    </span>
+                  )}
                 </label>
                 <input
                   type="password"
                   required
                   minLength={6}
-                  placeholder="Minimum 6 characters"
+                  placeholder="Min 6 characters (Letters, Numbers, Symbols)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary focus:bg-white dark:focus:bg-slate-800"
+                  className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-5 py-3.5 text-sm font-bold text-white outline-none focus:border-emerald-500"
                 />
+                {password && (
+                  <div className="mt-2 h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full transition-all duration-300 ${passwordStrength.color}`} style={{ width: `${passwordStrength.score}%` }} />
+                  </div>
+                )}
               </div>
 
               <button
                 type="submit"
-                className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95"
+                disabled={loading}
+                className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-sm font-black uppercase tracking-wider text-white shadow-xl hover:bg-emerald-500 active:scale-95 disabled:opacity-50 transition-all"
               >
-                <span>Continue to Category & Address</span>
+                <span>{loading ? "Sending OTP..." : "Send Verification OTP & Continue"}</span>
                 <ArrowRight size={18} />
               </button>
             </form>
           )}
 
-          {/* STEP 2: CATEGORY & LOCATION */}
-          {step === "address" && (
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendOtp();
-              }}
-            >
-              <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Merchant Category *
-                </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3.5 text-sm font-bold outline-none focus:border-primary cursor-pointer"
-                >
-                  <option value="Grocery">Grocery</option>
-                  <option value="Snacks">Snacks</option>
-                  <option value="Bakery">Bakery</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  Pickup Location / Warehouse Address *
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="Street name, landmark, area for courier pickup"
-                  value={pickupLocation}
-                  onChange={(e) => setPickupLocation(e.target.value)}
-                  className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 dark:bg-slate-900/50 px-5 py-3 text-sm font-bold outline-none focus:border-primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">City</label>
-                  <input
-                    type="text"
-                    placeholder="City"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">State</label>
-                  <input
-                    type="text"
-                    placeholder="State"
-                    value={state}
-                    onChange={(e) => setState(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">Pincode</label>
-                  <input
-                    type="text"
-                    placeholder="Pincode"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                    className="w-full rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-4 py-3 text-sm font-bold outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setStep("info")}
-                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95 disabled:opacity-50"
-                >
-                  {loading ? "Sending OTP..." : "Send OTP & Register"}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* STEP 3: OTP VERIFICATION */}
+          {/* STEP 2: OTP VERIFICATION */}
           {step === "otp" && (
-            <form className="space-y-4" onSubmit={handleRegisterSubmit}>
+            <form className="space-y-5" onSubmit={handleRegisterSubmit}>
               {infoMessage && (
-                <div className="rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 p-4 border border-emerald-100">
-                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                    {infoMessage}
+                <div className="rounded-2xl bg-emerald-950/40 p-4 border border-emerald-800/50">
+                  <p className="text-xs font-bold text-emerald-400 flex items-center gap-2">
+                    <ShieldCheck size={16} />
+                    <span>{infoMessage}</span>
                   </p>
                 </div>
               )}
 
               <div>
-                <label className="text-xs font-black uppercase tracking-wider text-text-muted mb-1 block">
-                  6-Digit Phone OTP Code *
+                <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-2 block text-center">
+                  Enter 6-Digit Verification Code
                 </label>
                 <input
                   type="text"
                   required
                   maxLength={6}
-                  placeholder="Enter 6-digit OTP"
+                  placeholder="------"
                   value={otpInput}
                   onChange={(e) => setOtpInput(e.target.value)}
-                  className="w-full text-center tracking-[0.5em] rounded-2xl border-2 border-slate-200/50 bg-slate-50/50 px-5 py-4 text-xl font-black outline-none focus:border-primary"
+                  className="w-full text-center tracking-[0.6em] rounded-2xl border border-slate-800 bg-slate-950 px-5 py-4 text-2xl font-black text-emerald-400 outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setStep("address")}
-                  className="h-14 px-6 rounded-2xl border-2 border-slate-200/50 font-bold text-sm"
+                  onClick={() => setStep("info")}
+                  className="h-14 px-6 rounded-2xl border border-slate-800 text-slate-300 font-bold text-xs uppercase tracking-wider hover:bg-slate-800"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-primary text-sm font-black uppercase tracking-widest text-white shadow-xl hover:opacity-90 active:scale-95 disabled:opacity-50"
+                  className="flex-1 h-14 flex items-center justify-center rounded-2xl bg-emerald-600 text-xs font-black uppercase tracking-wider text-white shadow-xl hover:bg-emerald-500 active:scale-95 disabled:opacity-50"
                 >
-                  {loading ? "Verifying..." : "Verify OTP & Open Dashboard"}
+                  {loading ? "Verifying..." : "Verify OTP & Complete Registration"}
                 </button>
               </div>
             </form>
           )}
 
-          {/* STEP 4: SUCCESS */}
+          {/* STEP 3: SUCCESS */}
           {step === "submitted" && (
             <div className="text-center py-6 space-y-4">
-              <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-lg">
-                <CheckCircle2 size={40} />
+              <div className="mx-auto h-20 w-20 rounded-full bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 flex items-center justify-center shadow-lg">
+                <CheckCircle2 size={42} />
               </div>
-              <h2 className="text-2xl font-black tracking-tight">
+              <h2 className="text-2xl font-black text-white tracking-tight">
                 Seller Account Active & Approved!
               </h2>
-              <p className="text-sm font-bold text-text-secondary max-w-md mx-auto leading-relaxed">
-                Welcome to Asali Swad! Your merchant account is fully registered under category <span className="text-emerald-600 font-black">{category}</span>.
+              <p className="text-xs font-bold text-slate-400 max-w-md mx-auto leading-relaxed">
+                Welcome to Asali Swad! <span className="text-white font-bold">{shopName}</span> is registered under category <span className="text-emerald-400 font-black">{category} ({subcategory})</span>.
               </p>
               <div className="pt-4">
                 <Link
                   href="/dashboard"
-                  className="inline-flex h-12 items-center justify-center px-8 rounded-2xl bg-primary text-white text-xs font-black uppercase tracking-wider shadow-lg hover:opacity-90"
+                  className="inline-flex h-12 items-center justify-center px-8 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider shadow-lg hover:bg-emerald-500 transition-all"
                 >
                   Go to Seller Dashboard
                 </Link>
@@ -500,10 +473,10 @@ export default function SellerRegisterPage() {
             </div>
           )}
 
-          <div className="mt-8 border-t border-foreground/[0.06] pt-6 text-center">
-            <p className="text-xs font-bold text-text-secondary">
+          <div className="mt-8 border-t border-slate-800/80 pt-6 text-center">
+            <p className="text-xs font-bold text-slate-400">
               Already registered?{" "}
-              <Link href="/" className="text-primary font-black hover:underline">
+              <Link href="/" className="text-emerald-400 font-black hover:underline">
                 Sign In to Seller Portal
               </Link>
             </p>
