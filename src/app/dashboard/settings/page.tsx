@@ -21,7 +21,7 @@ import {
   X
 } from "lucide-react";
 import { activeFSSAIProvider, calculateMerchantCompletion } from "@shared/services/fssaiVerificationService";
-import { uploadToSupabaseBucket } from "@shared/services/uploadService";
+import { uploadToSupabaseBucket } from "@shared/services";
 
 export default function SellerSettings() {
   const [loading, setLoading] = useState(true);

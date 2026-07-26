@@ -14,7 +14,7 @@ import {
   ShoppingBag,
   AlertTriangle
 } from "lucide-react";
-import { uploadToCloudinary } from "@shared/services/uploadService";
+import { uploadToCloudinary } from "@shared/services";
 
 export default function SellerProducts() {
   const [loading, setLoading] = useState(true);
