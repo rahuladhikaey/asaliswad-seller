@@ -104,7 +104,6 @@ export async function syncCategoryToCustomerDb(category: any, action: 'upsert' |
       slug: category.slug || category.name?.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"),
       main_category: category.main_category || 'Grocery',
       image_url: category.image_url || null,
-      icon: category.icon || '📦',
       is_active: category.is_active !== false,
       sort_order: category.sort_order || 0,
       updated_at: new Date().toISOString()
