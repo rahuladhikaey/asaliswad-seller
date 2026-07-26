@@ -305,6 +305,7 @@ export default function SellerProducts() {
         }).filter(Boolean)
       : [];
 
+    const slug = form.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
     const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
     const rawCatId = String(form.category_id || "");
     const selectedCat = categories.find(c => String(c.id) === rawCatId);
