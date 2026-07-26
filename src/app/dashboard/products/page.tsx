@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   AlertTriangle
 } from "lucide-react";
+import { uploadToCloudinary } from "@shared/services/uploadService";
 
 export default function SellerProducts() {
   const [loading, setLoading] = useState(true);
@@ -367,6 +368,23 @@ export default function SellerProducts() {
     const categoryName = selectedCat?.name || "General";
     const mainCategoryName = (selectedCat as any)?.main_category || (selectedCat as any)?.description || "Grocery";
 
+    // Upload product images directly to Cloudinary CDN
+    let cloudinaryImages: string[] = [];
+    try {
+      if (uploadedImages.length > 0) {
+        cloudinaryImages = await Promise.all(
+          uploadedImages.map(img => uploadToCloudinary(img))
+        );
+      } else if (form.image_url.trim()) {
+        const cloudUrl = await uploadToCloudinary(form.image_url.trim());
+        cloudinaryImages = [cloudUrl];
+      }
+    } catch (err) {
+      console.warn("Cloudinary upload notice:", err);
+    }
+
+    const finalMainImageUrl = cloudinaryImages[0] || form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300";
+
     const payload: any = {
       name: form.name.trim(),
       slug,
@@ -376,8 +394,8 @@ export default function SellerProducts() {
       category_id: categoryId,
       category_name: categoryName,
       category: mainCategoryName,
-      image_url: form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300",
-      images: uploadedImages.length > 0 ? uploadedImages : [form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300"],
+      image_url: finalMainImageUrl,
+      images: cloudinaryImages.length > 0 ? cloudinaryImages : [finalMainImageUrl],
       brand: form.brand.trim() || "asaliswad",
       stock,
       low_stock_limit,

@@ -16,9 +16,12 @@ import {
   Clock, 
   XCircle,
   HelpCircle,
-  Percent
+  Percent,
+  Eye,
+  X
 } from "lucide-react";
 import { activeFSSAIProvider, calculateMerchantCompletion } from "@shared/services/fssaiVerificationService";
+import { uploadToSupabaseBucket } from "@shared/services/uploadService";
 
 export default function SellerSettings() {
   const [loading, setLoading] = useState(true);
@@ -36,6 +39,8 @@ export default function SellerSettings() {
   // FSSAI document state
   const [fssaiFile, setFssaiFile] = useState<File | null>(null);
   const [fssaiUploadError, setFssaiUploadError] = useState("");
+  const [uploadingFssai, setUploadingFssai] = useState(false);
+  const [showFssaiModal, setShowFssaiModal] = useState(false);
 
   const [form, setForm] = useState({
     business_name: "",
@@ -198,7 +203,7 @@ export default function SellerSettings() {
     }
   };
 
-  const handleFssaiFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFssaiFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setFssaiUploadError("");
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -211,19 +216,28 @@ export default function SellerSettings() {
     }
 
     setFssaiFile(file);
+    setUploadingFssai(true);
 
-    // Convert file to Base64/DataURL for immediate storage preview and automatic verification
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setForm(prev => ({ 
-          ...prev, 
-          fssai_certificate_url: event.target!.result as string,
-          fssai_status: "Verified"
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      // Upload directly to Supabase Storage Bucket 'fssai-licenses'
+      const publicUrl = await uploadToSupabaseBucket(
+        "fssai-licenses", 
+        file, 
+        `fssai_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+      );
+
+      setForm(prev => ({ 
+        ...prev, 
+        fssai_certificate_url: publicUrl,
+        fssai_status: "Verified"
+      }));
+      setStatusMsg("✨ FSSAI License Document uploaded to Supabase Bucket & Verified!");
+    } catch (err: any) {
+      console.error("FSSAI Supabase Upload Error:", err);
+      setFssaiUploadError(err.message || "Failed to upload FSSAI file to Supabase Storage bucket.");
+    } finally {
+      setUploadingFssai(false);
+    }
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -511,17 +525,23 @@ export default function SellerSettings() {
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={handleFssaiFileChange}
-                  className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 dark:file:bg-emerald-950/50 dark:file:text-emerald-300 hover:file:bg-emerald-100"
+                  disabled={uploadingFssai}
+                  className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 dark:file:bg-emerald-950/50 dark:file:text-emerald-300 hover:file:bg-emerald-100 disabled:opacity-50"
                 />
-                {form.fssai_certificate_url && (
-                  <a
-                    href={form.fssai_certificate_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-semibold text-emerald-600 hover:underline shrink-0 flex items-center gap-1"
+                {uploadingFssai && (
+                  <span className="text-xs font-bold text-emerald-600 animate-pulse flex items-center gap-1.5 shrink-0">
+                    <div className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    Uploading to Supabase Bucket...
+                  </span>
+                )}
+                {form.fssai_certificate_url && !uploadingFssai && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFssaiModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer shadow-xs"
                   >
-                    <FileText size={14} /> Preview Uploaded Certificate
-                  </a>
+                    <Eye size={14} /> View FSSAI License Pic
+                  </button>
                 )}
               </div>
               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5 font-medium">
@@ -663,6 +683,65 @@ export default function SellerSettings() {
           </button>
         </div>
       </form>
+
+      {/* FSSAI License Document Modal Viewer */}
+      {showFssaiModal && form.fssai_certificate_url && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="text-emerald-600" size={20} /> FSSAI License Certificate Document
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Uploaded to Supabase Bucket: {form.fssai_certificate_url.slice(0, 60)}...
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFssaiModal(false)}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2 flex items-center justify-center min-h-[400px]">
+              {form.fssai_certificate_url.includes(".pdf") ? (
+                <iframe
+                  src={form.fssai_certificate_url}
+                  className="w-full h-[550px] rounded-xl border-none"
+                  title="FSSAI Document PDF"
+                />
+              ) : (
+                <img
+                  src={form.fssai_certificate_url}
+                  alt="FSSAI License Certificate"
+                  className="max-h-[600px] w-auto max-w-full object-contain rounded-xl shadow-md"
+                />
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
+              <a
+                href={form.fssai_certificate_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+              >
+                <FileText size={14} /> Open Direct File Link
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowFssaiModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold transition-all"
+              >
+                Close Viewer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
