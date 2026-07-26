@@ -363,15 +363,13 @@ export default function SellerProducts() {
     const categoryId = isValidUuid(rawCatId) ? rawCatId : (selectedCat && isValidUuid(String(selectedCat.id)) ? String(selectedCat.id) : null);
     const categoryName = selectedCat?.name || "General";
 
-    const payload = {
+    const payload: any = {
       name: form.name.trim(),
       slug,
       price,
       mrp,
       description: form.description.trim(),
       category_id: categoryId,
-      category_name: categoryName,
-      category: categoryName,
       image_url: form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300", // fallback spicy image
       brand: form.brand.trim(),
       stock,
