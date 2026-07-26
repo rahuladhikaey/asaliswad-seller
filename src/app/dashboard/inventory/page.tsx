@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
-import { syncProductToCustomerDb } from "@shared/utils/dualDatabaseSync";
 import type { Product } from "@shared/types";
 import { 
   Package, 
@@ -115,7 +114,6 @@ export default function SellerInventory() {
       }
 
       const updatedProdObj = { ...product, stock: newStock, low_stock_limit: newLimit, status: newStock > 0 ? "IN_STOCK" : "OUT_OF_STOCK" };
-      await syncProductToCustomerDb(updatedProdObj, 'upsert');
 
       setStatusMessage(`✅ Updated stock for ${product.name}`);
       // Refresh local product list item

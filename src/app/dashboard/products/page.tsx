@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
-import { syncProductToCustomerDb } from "@shared/utils/dualDatabaseSync";
 import type { Product, Category } from "@shared/types";
 import { 
   Plus, 
@@ -249,7 +248,6 @@ export default function SellerProducts() {
 
       if (error) throw error;
       
-      await syncProductToCustomerDb({ id: productId }, 'delete');
       setProducts(products.filter(p => p.id !== productId));
       alert("Product deleted successfully.");
     } catch (e: any) {
@@ -368,10 +366,6 @@ export default function SellerProducts() {
           savedProduct = fetched?.[0] || { ...payload };
         }
         setStatusMessage("✅ Product added successfully!");
-      }
-
-      if (savedProduct && savedProduct.id) {
-        await syncProductToCustomerDb(savedProduct, 'upsert');
       }
 
       setTimeout(() => {
