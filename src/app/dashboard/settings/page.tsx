@@ -212,11 +212,15 @@ export default function SellerSettings() {
 
     setFssaiFile(file);
 
-    // Convert file to Base64/DataURL for immediate storage preview
+    // Convert file to Base64/DataURL for immediate storage preview and automatic verification
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        setForm(prev => ({ ...prev, fssai_certificate_url: event.target!.result as string }));
+        setForm(prev => ({ 
+          ...prev, 
+          fssai_certificate_url: event.target!.result as string,
+          fssai_status: "Verified"
+        }));
       }
     };
     reader.readAsDataURL(file);
@@ -232,33 +236,8 @@ export default function SellerSettings() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Validate FSSAI License Number if provided
-      if (form.fssai_license_number) {
-        const licenseCheck = activeFSSAIProvider.validateFormat(form.fssai_license_number);
-        if (!licenseCheck.valid) {
-          throw new Error(licenseCheck.message);
-        }
-      }
-
-      // Fetch latest seller status from DB first to prevent overwriting admin verification
-      const { data: currentSeller } = await supabase
-        .from("sellers")
-        .select("fssai_status, fssai_license_number, fssai_certificate_url")
-        .eq("user_id", user.id)
-        .single();
-
-      let newFssaiStatus = currentSeller?.fssai_status || form.fssai_status;
-
-      // If the seller CHANGED the license number or certificate, it goes back to Pending Verification
-      const fssaiChanged = 
-        currentSeller?.fssai_license_number !== form.fssai_license_number ||
-        currentSeller?.fssai_certificate_url !== form.fssai_certificate_url;
-
-      if (form.fssai_license_number && form.fssai_certificate_url) {
-        if (newFssaiStatus === "Not Submitted" || newFssaiStatus === "Rejected" || (newFssaiStatus === "Verified" && fssaiChanged)) {
-          newFssaiStatus = "Pending Verification";
-        }
-      }
+      // Auto-approve FSSAI status when certificate document is uploaded
+      const newFssaiStatus = form.fssai_certificate_url ? "Verified" : "Not Submitted";
 
       const updatedPct = calculateMerchantCompletion({ ...form, fssai_status: newFssaiStatus });
 
@@ -278,7 +257,7 @@ export default function SellerSettings() {
         state: form.state,
         pincode: form.pincode,
         gstin: form.gstin,
-        fssai_license_number: form.fssai_license_number,
+        fssai_license_number: form.fssai_license_number || "UPLOADED",
         fssai_certificate_url: form.fssai_certificate_url,
         fssai_expiry_date: form.fssai_expiry_date || null,
         fssai_status: newFssaiStatus,
@@ -300,14 +279,14 @@ export default function SellerSettings() {
       if (error) throw error;
 
       // Log verification audit action if FSSAI submitted
-      if (newFssaiStatus === "Pending Verification" && sellerId) {
+      if (newFssaiStatus === "Verified" && sellerId) {
         await supabase.from("merchant_verification_logs").insert({
           seller_id: sellerId,
-          action: "SUBMITTED_FSSAI",
+          action: "AUTO_VERIFIED_FSSAI",
           performed_by: user.id,
           performer_role: "seller",
-          notes: `Submitted FSSAI License Number ${form.fssai_license_number} for verification.`,
-          metadata: { license_number: form.fssai_license_number, expiry: form.fssai_expiry_date }
+          notes: "Original FSSAI License Document uploaded and automatically verified.",
+          metadata: { expiry: form.fssai_expiry_date }
         });
       }
 
@@ -504,43 +483,17 @@ export default function SellerSettings() {
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="text-emerald-600" size={18} />
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">FSSAI License Verification *</h2>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Upload Original FSSAI License Document *</h2>
             </div>
             <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase ${
-              form.fssai_status === 'Verified' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
-              form.fssai_status === 'Pending Verification' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
-              form.fssai_status === 'Rejected' ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+              form.fssai_certificate_url ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
               'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
             }`}>
-              Status: {form.fssai_status}
+              Status: {form.fssai_certificate_url ? 'Verified' : 'Not Uploaded'}
             </span>
           </div>
 
-          {form.fssai_status === "Rejected" && form.fssai_rejection_reason && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-800 text-xs font-medium text-rose-800 dark:text-rose-300 flex items-start gap-2">
-              <XCircle size={16} className="shrink-0 mt-0.5 text-rose-600" />
-              <div>
-                <strong>Rejection Reason:</strong> {form.fssai_rejection_reason}
-                <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-400">Please re-check your 14-digit license number and upload a clear certificate document under 50 KB.</p>
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">FSSAI License Number (14 Digits) *</label>
-              <input
-                type="text"
-                required
-                maxLength={14}
-                value={form.fssai_license_number}
-                onChange={e => setForm({ ...form, fssai_license_number: e.target.value.replace(/\D/g, '') })}
-                placeholder="e.g. 10021022000123"
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-bold tracking-wider outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <p className="text-[10px] text-slate-400 mt-1">Must contain exactly 14 numeric digits.</p>
-            </div>
-
             <div>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">License Expiry Date (Optional)</label>
               <input
@@ -552,7 +505,7 @@ export default function SellerSettings() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Upload FSSAI Certificate Document (PDF / JPG / PNG - Max 50 KB) *</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Upload Original FSSAI Certificate Document (PDF / JPG / PNG - Max 50 KB) *</label>
               <div className="flex flex-col sm:flex-row items-center gap-3">
                 <input
                   type="file"
@@ -571,6 +524,9 @@ export default function SellerSettings() {
                   </a>
                 )}
               </div>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5 font-medium">
+                ⚡ Automatic Approval: Uploading your original FSSAI certificate automatically approves your FSSAI verification.
+              </p>
               {fssaiUploadError && (
                 <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mt-1.5">{fssaiUploadError}</p>
               )}
@@ -664,18 +620,6 @@ export default function SellerSettings() {
                 value={form.phonepay_number}
                 onChange={e => setForm({ ...form, phonepay_number: e.target.value })}
                 placeholder="Registered PhonePe number for payouts"
-                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1">Business Logo URL *</label>
-              <input
-                type="url"
-                required
-                value={form.business_logo_url}
-                onChange={e => setForm({ ...form, business_logo_url: e.target.value })}
-                placeholder="https://... logo image link"
                 className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>

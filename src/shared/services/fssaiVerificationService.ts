@@ -92,10 +92,8 @@ export function calculateMerchantCompletion(seller: any): number {
     { key: "city", val: seller.city },
     { key: "state", val: seller.state },
     { key: "pincode", val: seller.pincode },
-    { key: "fssai_license_number", val: seller.fssai_license_number },
     { key: "fssai_certificate_url", val: seller.fssai_certificate_url },
     { key: "phonepay_number", val: seller.phonepay_number || seller.phonepay_no },
-    { key: "business_logo_url", val: seller.business_logo_url || seller.profile_photo },
     { key: "business_description", val: seller.business_description },
   ];
 
