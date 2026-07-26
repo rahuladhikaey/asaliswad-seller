@@ -154,7 +154,7 @@ export default function SellerRegisterPage() {
         sellerPayload.user_id = validUserId;
       }
 
-      let createdSellerId: string | null = validUserId;
+      let createdSellerId: string | null = validUserId ?? null;
 
       const { data: insertedData, error: sellerError } = await supabase
         .from("sellers")
