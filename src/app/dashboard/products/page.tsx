@@ -11,7 +11,8 @@ import {
   Eye, 
   X,
   Upload,
-  ShoppingBag
+  ShoppingBag,
+  AlertTriangle
 } from "lucide-react";
 
 export default function SellerProducts() {
