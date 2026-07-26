@@ -361,8 +361,11 @@ export default function SellerProducts() {
     const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
     const rawCatId = String(form.category_id || "");
     const selectedCat = categories.find(c => String(c.id) === rawCatId);
-    const categoryId = isValidUuid(rawCatId) ? rawCatId : (selectedCat && isValidUuid(String(selectedCat.id)) ? String(selectedCat.id) : null);
+    const categoryId = selectedCat 
+      ? selectedCat.id 
+      : (isValidUuid(rawCatId) ? rawCatId : (!isNaN(Number(rawCatId)) ? Number(rawCatId) : null));
     const categoryName = selectedCat?.name || "General";
+    const mainCategoryName = (selectedCat as any)?.main_category || (selectedCat as any)?.description || "Grocery";
 
     const payload: any = {
       name: form.name.trim(),
@@ -371,8 +374,11 @@ export default function SellerProducts() {
       mrp,
       description: form.description.trim(),
       category_id: categoryId,
-      image_url: form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300", // fallback spicy image
-      brand: form.brand.trim(),
+      category_name: categoryName,
+      category: mainCategoryName,
+      image_url: form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300",
+      images: uploadedImages.length > 0 ? uploadedImages : [form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300"],
+      brand: form.brand.trim() || "asaliswad",
       stock,
       low_stock_limit,
       sku: form.sku.trim() || null,
@@ -380,6 +386,9 @@ export default function SellerProducts() {
       specifications,
       packages,
       status: stock > 0 ? "IN_STOCK" : "OUT_OF_STOCK",
+      is_active: true,
+      is_approved: true,
+      approval_status: "approved",
       seller_id: userId
     };
 
@@ -623,19 +632,36 @@ export default function SellerProducts() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Category *</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5 flex items-center justify-between">
+                      <span>Category & Subcategory *</span>
+                      {form.category_id && (() => {
+                        const selected = categories.find(c => String(c.id) === String(form.category_id));
+                        return selected ? (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                            🏷️ {(selected as any)?.main_category || (selected as any)?.description || "Grocery"} &gt; {selected.name}
+                          </span>
+                        ) : null;
+                      })()}
+                    </label>
                     <select
                       required
                       value={form.category_id}
                       onChange={e => setForm({...form, category_id: e.target.value})}
                       className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
                     >
-                      <option value="">Select Category</option>
-                      {categories.map((c: any) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} {c.main_category ? `(${c.main_category})` : ''}
-                        </option>
-                      ))}
+                      <option value="">Select Category & Subcategory</option>
+                      {Array.from(new Set(categories.map((c: any) => c.main_category || c.description || "Grocery"))).map((mainCat) => {
+                        const subCats = categories.filter((c: any) => (c.main_category || c.description || "Grocery") === mainCat);
+                        return (
+                          <optgroup key={mainCat} label={`📦 ${mainCat}`}>
+                            {subCats.map((c: any) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
                     </select>
                   </div>
 
