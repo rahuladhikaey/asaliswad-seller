@@ -33,6 +33,8 @@ export async function syncProductToCustomerDb(product: any, action: 'upsert' | '
       return;
     }
 
+    const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
     // Sanitize & build complete customer-visible sync payload with identical Product ID
     const syncPayload = {
       id: product.id,
@@ -43,7 +45,7 @@ export async function syncProductToCustomerDb(product: any, action: 'upsert' | '
       description: product.description || '',
       image_url: product.image_url || product.images?.[0] || 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300',
       images: product.images || (product.image_url ? [product.image_url] : []),
-      category_id: product.category_id || null,
+      category_id: isValidUuid(product.category_id) ? product.category_id : null,
       category_name: product.category_name || product.category || 'General',
       category: product.category || product.category_name || 'General',
       brand: product.brand || 'Asali Swad',

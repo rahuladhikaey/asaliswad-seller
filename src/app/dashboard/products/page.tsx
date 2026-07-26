@@ -305,7 +305,11 @@ export default function SellerProducts() {
         }).filter(Boolean)
       : [];
 
-    const slug = form.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
+    const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    const rawCatId = String(form.category_id || "");
+    const selectedCat = categories.find(c => String(c.id) === rawCatId);
+    const categoryId = isValidUuid(rawCatId) ? rawCatId : (selectedCat && isValidUuid(String(selectedCat.id)) ? String(selectedCat.id) : null);
+    const categoryName = selectedCat?.name || "General";
 
     const payload = {
       name: form.name.trim(),
@@ -313,7 +317,9 @@ export default function SellerProducts() {
       price,
       mrp,
       description: form.description.trim(),
-      category_id: form.category_id ? Number(form.category_id) : null,
+      category_id: categoryId,
+      category_name: categoryName,
+      category: categoryName,
       image_url: form.image_url.trim() || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=300", // fallback spicy image
       brand: form.brand.trim(),
       stock,
