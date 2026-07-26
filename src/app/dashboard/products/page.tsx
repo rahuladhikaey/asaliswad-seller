@@ -345,11 +345,25 @@ export default function SellerProducts() {
           .select();
 
         if (error) throw error;
-        savedProduct = data?.[0] || payload;
+        
+        if (data && data.length > 0) {
+          savedProduct = data[0];
+        } else {
+          // Fallback query to retrieve auto-generated ID for newly inserted product
+          const { data: fetched } = await supabase
+            .from("products")
+            .select("*")
+            .eq("slug", slug)
+            .eq("seller_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          
+          savedProduct = fetched?.[0] || { ...payload };
+        }
         setStatusMessage("✅ Product added successfully!");
       }
 
-      if (savedProduct) {
+      if (savedProduct && savedProduct.id) {
         await syncProductToCustomerDb(savedProduct, 'upsert');
       }
 
