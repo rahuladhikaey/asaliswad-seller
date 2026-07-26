@@ -23,11 +23,24 @@ export default function SellerInventory() {
   const [history, setHistory] = useState<any[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  const [isSuspended, setIsSuspended] = useState(false);
+
   const loadData = async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      const { data: seller } = await supabase
+        .from("sellers")
+        .select("account_status, status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (seller) {
+        const accStatus = seller.account_status || seller.status || "Active";
+        setIsSuspended(accStatus.toLowerCase() === "suspended");
+      }
 
       // Fetch products for seller
       const { data: productsData } = await supabase
@@ -72,6 +85,10 @@ export default function SellerInventory() {
   }, []);
 
   const handleSaveStock = async (product: Product) => {
+    if (isSuspended) {
+      alert("🚫 Account Suspended: You cannot update product inventory while your account is suspended.");
+      return;
+    }
     const newStock = stockChanges[product.id];
     const newLimit = limits[product.id];
 

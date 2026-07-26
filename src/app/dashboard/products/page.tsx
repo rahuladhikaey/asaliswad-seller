@@ -22,6 +22,7 @@ export default function SellerProducts() {
   const [isSettingsComplete, setIsSettingsComplete] = useState<boolean>(false);
   const [settingsCompletionPct, setSettingsCompletionPct] = useState<number>(0);
   const [fssaiStatus, setFssaiStatus] = useState<string>("Not Submitted");
+  const [accountStatus, setAccountStatus] = useState<string>("Active");
 
   // Modal / Form state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -94,16 +95,19 @@ export default function SellerProducts() {
       // Fetch seller settings status
       const { data: seller } = await supabase
         .from("sellers")
-        .select("settings_completion_pct, fssai_status")
+        .select("settings_completion_pct, fssai_status, account_status, status")
         .eq("user_id", user.id)
         .maybeSingle();
 
       const pct = seller?.settings_completion_pct || 0;
       const fStatus = seller?.fssai_status || "Not Submitted";
-      const isComplete = pct === 100 && fStatus === "Verified";
+      const accStatus = seller?.account_status || seller?.status || "Active";
+      const isSuspended = accStatus.toLowerCase() === "suspended";
+      const isComplete = pct === 100 && fStatus === "Verified" && !isSuspended;
 
       setSettingsCompletionPct(pct);
       setFssaiStatus(fStatus);
+      setAccountStatus(accStatus);
       setIsSettingsComplete(isComplete);
 
       // Fetch products for this seller
@@ -169,9 +173,12 @@ export default function SellerProducts() {
             if (payload.new) {
               const fStatus = payload.new.fssai_status || "Not Submitted";
               const pct = payload.new.settings_completion_pct || 0;
+              const accStatus = payload.new.account_status || payload.new.status || "Active";
+              const isSuspended = accStatus.toLowerCase() === "suspended";
               setFssaiStatus(fStatus);
               setSettingsCompletionPct(pct);
-              setIsSettingsComplete(pct === 100 && fStatus === 'Verified');
+              setAccountStatus(accStatus);
+              setIsSettingsComplete(pct === 100 && fStatus === 'Verified' && !isSuspended);
             }
           }
         )
@@ -197,6 +204,10 @@ export default function SellerProducts() {
   }, [isModalOpen]);
 
   const openAddModal = () => {
+    if (accountStatus.toLowerCase() === "suspended") {
+      alert("🚫 Your seller account is suspended by Admin. You cannot add or publish new products.");
+      return;
+    }
     if (!isSettingsComplete) {
       alert("Please complete your Merchant Settings before adding products.");
       return;
@@ -224,6 +235,10 @@ export default function SellerProducts() {
   };
 
   const openEditModal = (product: Product) => {
+    if (accountStatus.toLowerCase() === "suspended") {
+      alert("🚫 Your seller account is suspended by Admin. Product modification is disabled.");
+      return;
+    }
     setEditingProduct(product);
     setUploadedImages(product.image_url ? [product.image_url] : []);
     setImageError("");
@@ -267,6 +282,10 @@ export default function SellerProducts() {
   };
 
   const handleDelete = async (productId: number) => {
+    if (accountStatus.toLowerCase() === "suspended") {
+      alert("🚫 Account Suspended: Deleting products is disabled.");
+      return;
+    }
     if (!confirm("Are you sure you want to delete this product?")) return;
 
     try {
@@ -287,6 +306,11 @@ export default function SellerProducts() {
 
   const handleFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (accountStatus.toLowerCase() === "suspended") {
+      setStatusMessage("❌ Account Suspended: Product creation and updates are disabled.");
+      alert("🚫 Your account is suspended by Admin. You cannot save products.");
+      return;
+    }
     setStatusMessage("Saving product...");
 
     const price = Number(form.price);
@@ -417,14 +441,23 @@ export default function SellerProducts() {
         </div>
         <button
           onClick={openAddModal}
-          disabled={!isSettingsComplete}
+          disabled={!isSettingsComplete || accountStatus.toLowerCase() === "suspended"}
           className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={16} /> Add Product
         </button>
       </div>
 
-      {!isSettingsComplete && (
+      {accountStatus.toLowerCase() === "suspended" && (
+        <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 p-4 text-xs font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-3">
+          <AlertTriangle size={20} className="shrink-0 text-rose-600 dark:text-rose-400" />
+          <div>
+            <strong>🚫 Account Fully Suspended:</strong> Your seller account has been suspended by SuperAdmin. Adding new products, editing catalog listings, and deleting items are completely disabled.
+          </div>
+        </div>
+      )}
+
+      {!isSettingsComplete && accountStatus.toLowerCase() !== "suspended" && (
         <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-4 text-xs font-semibold text-amber-800 dark:text-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <strong>🔒 Product Management Locked:</strong> Please complete your Merchant Settings before adding products.

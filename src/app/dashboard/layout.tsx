@@ -32,16 +32,48 @@ export default function DashboardLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [sellerName, setSellerName] = useState("Seller");
   const [sellerEmail, setSellerEmail] = useState("");
+  const [isSuspended, setIsSuspended] = useState(false);
 
   useEffect(() => {
+    let channel: any;
+
     async function loadUser() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setSellerName(user.user_metadata?.full_name || user.email?.split("@")[0] || "Seller");
         setSellerEmail(user.email || "");
+
+        const { data: seller } = await supabase
+          .from("sellers")
+          .select("account_status, status")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (seller) {
+          const accStatus = seller.account_status || seller.status || "Active";
+          setIsSuspended(accStatus.toLowerCase() === "suspended");
+        }
+
+        channel = supabase
+          .channel("seller-layout-status")
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "sellers", filter: `user_id=eq.${user.id}` },
+            (payload) => {
+              if (payload.new) {
+                const accStatus = payload.new.account_status || payload.new.status || "Active";
+                setIsSuspended(accStatus.toLowerCase() === "suspended");
+              }
+            }
+          )
+          .subscribe();
       }
     }
     loadUser();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -166,6 +198,15 @@ export default function DashboardLayout({
             <DarkModeToggle />
           </div>
         </header>
+
+        {isSuspended && (
+          <div className="bg-rose-600 text-white px-6 py-2.5 text-xs font-black flex items-center justify-between shadow-md shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-base">🚫</span>
+              <span>ACCOUNT SUSPENDED: Your seller account has been suspended by Admin. Adding products, updating catalog, and store publishing are fully disabled.</span>
+            </div>
+          </div>
+        )}
 
         {/* Page Children */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-foreground/[0.01]">
