@@ -30,6 +30,8 @@ export default function SellerProducts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [selectedMainCategory, setSelectedMainCategory] = useState("");
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
   
   const [form, setForm] = useState({
     name: "",
@@ -42,7 +44,6 @@ export default function SellerProducts() {
     stock: "0",
     low_stock_limit: "5",
     sku: "",
-    offersText: "",
     specificationsText: "",
     packagesText: "",
   });
@@ -217,6 +218,10 @@ export default function SellerProducts() {
     setEditingProduct(null);
     setUploadedImages([]);
     setImageError("");
+    const firstMainCategory = Array.from(new Set(categories.map((c: any) => c.main_category || c.description || "Grocery")))[0] || "Grocery";
+    const firstSubcategory = categories.find((c: any) => (c.main_category || c.description || "Grocery") === firstMainCategory);
+    setSelectedMainCategory(firstMainCategory);
+    setSelectedSubcategoryId(firstSubcategory?.id?.toString() || "");
     setForm({
       name: "",
       price: "",
@@ -228,7 +233,6 @@ export default function SellerProducts() {
       stock: "0",
       low_stock_limit: "5",
       sku: "",
-      offersText: "",
       specificationsText: "",
       packagesText: "",
     });
@@ -244,10 +248,14 @@ export default function SellerProducts() {
     setEditingProduct(product);
     setUploadedImages(product.image_url ? [product.image_url] : []);
     setImageError("");
+
+    const selectedCategory = categories.find((c: any) => String(c.id) === String(product.category_id));
+    const matchedMainCategory = (selectedCategory as any)?.main_category || (selectedCategory as any)?.description || product.category || "Grocery";
+    const matchedSubcategoryId = selectedCategory ? String(selectedCategory.id) : "";
+    setSelectedMainCategory(matchedMainCategory);
+    setSelectedSubcategoryId(matchedSubcategoryId);
     
     // Format text areas
-    const offersText = (product.offers || []).join("\n");
-    
     const specsArray: string[] = [];
     if (product.specifications) {
       Object.entries(product.specifications).forEach(([k, v]) => {
@@ -275,7 +283,6 @@ export default function SellerProducts() {
       stock: (product.stock || 0).toString(),
       low_stock_limit: (product.low_stock_limit || 5).toString(),
       sku: product.sku || "",
-      offersText,
       specificationsText,
       packagesText,
     });
@@ -325,11 +332,6 @@ export default function SellerProducts() {
       return;
     }
 
-    // Parse offers
-    const offers = form.offersText
-      ? form.offersText.split("\n").map(o => o.trim()).filter(Boolean)
-      : [];
-
     // Parse specifications (Key: Value)
     const specifications: Record<string, string> = {};
     if (form.specificationsText) {
@@ -360,13 +362,13 @@ export default function SellerProducts() {
 
     const slug = form.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
     const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-    const rawCatId = String(form.category_id || "");
+    const rawCatId = String(selectedSubcategoryId || form.category_id || "");
     const selectedCat = categories.find(c => String(c.id) === rawCatId);
     const categoryId = selectedCat 
       ? selectedCat.id 
       : (isValidUuid(rawCatId) ? rawCatId : (!isNaN(Number(rawCatId)) ? Number(rawCatId) : null));
     const categoryName = selectedCat?.name || "General";
-    const mainCategoryName = (selectedCat as any)?.main_category || (selectedCat as any)?.description || "Grocery";
+    const mainCategoryName = (selectedCat as any)?.main_category || (selectedCat as any)?.description || selectedMainCategory || "Grocery";
 
     // Upload product images directly to Cloudinary CDN
     let cloudinaryImages: string[] = [];
@@ -400,7 +402,7 @@ export default function SellerProducts() {
       stock,
       low_stock_limit,
       sku: form.sku.trim() || null,
-      offers,
+      offers: [],
       specifications,
       packages,
       status: stock > 0 ? "IN_STOCK" : "OUT_OF_STOCK",
@@ -649,38 +651,37 @@ export default function SellerProducts() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5 flex items-center justify-between">
-                      <span>Category & Subcategory *</span>
-                      {form.category_id && (() => {
-                        const selected = categories.find(c => String(c.id) === String(form.category_id));
-                        return selected ? (
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-extrabold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                            🏷️ {(selected as any)?.main_category || (selected as any)?.description || "Grocery"} &gt; {selected.name}
-                          </span>
-                        ) : null;
-                      })()}
-                    </label>
-                    <select
-                      required
-                      value={form.category_id}
-                      onChange={e => setForm({...form, category_id: e.target.value})}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
-                    >
-                      <option value="">Select Category & Subcategory</option>
-                      {Array.from(new Set(categories.map((c: any) => c.main_category || c.description || "Grocery"))).map((mainCat) => {
-                        const subCats = categories.filter((c: any) => (c.main_category || c.description || "Grocery") === mainCat);
-                        return (
-                          <optgroup key={mainCat} label={`📦 ${mainCat}`}>
-                            {subCats.map((c: any) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
-                    </select>
+                  <div className="space-y-3">
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block">Category & Subcategory *</label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <select
+                        required
+                        value={selectedMainCategory}
+                        onChange={(e) => {
+                          const nextMain = e.target.value;
+                          const nextSubcategory = categories.find((c: any) => (c.main_category || c.description || "Grocery") === nextMain);
+                          setSelectedMainCategory(nextMain);
+                          setSelectedSubcategoryId(nextSubcategory?.id?.toString() || "");
+                        }}
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
+                      >
+                        <option value="">Select Category</option>
+                        {Array.from(new Set(categories.map((c: any) => c.main_category || c.description || "Grocery"))).map((mainCat) => (
+                          <option key={mainCat} value={mainCat}>{mainCat}</option>
+                        ))}
+                      </select>
+                      <select
+                        required
+                        value={selectedSubcategoryId}
+                        onChange={(e) => setSelectedSubcategoryId(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all cursor-pointer"
+                      >
+                        <option value="">Select Subcategory</option>
+                        {categories.filter((c: any) => (c.main_category || c.description || "Grocery") === selectedMainCategory).map((c: any) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -739,22 +740,6 @@ export default function SellerProducts() {
                       </p>
                     )}
 
-                    {/* URL Input Fallback */}
-                    <div className="mt-2.5">
-                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">Or paste image URL:</label>
-                      <input
-                        type="text"
-                        value={form.image_url}
-                        onChange={e => {
-                          setForm({...form, image_url: e.target.value});
-                          if (e.target.value && !uploadedImages.includes(e.target.value)) {
-                            setUploadedImages([e.target.value, ...uploadedImages].slice(0, 2));
-                          }
-                        }}
-                        placeholder="Paste image URL here..."
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-2.5 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
-                      />
-                    </div>
                   </div>
 
                   <div className="grid gap-4 grid-cols-3">
@@ -817,17 +802,6 @@ export default function SellerProducts() {
                         className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all"
                       />
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Offers (One per line)</label>
-                    <textarea
-                      rows={2}
-                      value={form.offersText}
-                      onChange={e => setForm({...form, offersText: e.target.value})}
-                      placeholder="Buy 2 Get 1 Free&#10;Flat 10% Off"
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3 text-xs font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-all resize-none"
-                    />
                   </div>
 
                   <div>
