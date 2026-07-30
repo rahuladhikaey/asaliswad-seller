@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Box
+  Box,
+  Trash
 } from "lucide-react";
 
 const ORDER_STATUSES = [
@@ -139,6 +140,32 @@ export default function SellerOrders() {
     } catch (e: any) {
       console.error(e);
       setStatusMessage(`❌ Error: ${e.message || "Failed to update status."}`);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this order record? This action cannot be undone.")) return;
+    try {
+      setStatusMessage("Deleting order record...");
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/orders/${orderId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${session?.access_token || ""}`
+        }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to delete order.");
+      }
+
+      setStatusMessage("✅ Order deleted successfully!");
+      setOrders(orders.filter(o => o.id !== orderId));
+      setSelectedOrder(null);
+      setTimeout(() => setStatusMessage(""), 3000);
+    } catch (e: any) {
+      console.error(e);
+      setStatusMessage(`❌ Error: ${e.message || "Failed to delete order."}`);
     }
   };
 
@@ -377,6 +404,17 @@ export default function SellerOrders() {
                 </button>
               </div>
             )}
+            {/* Delete Order Record */}
+            <div className="pt-4 border-t border-foreground/[0.06]">
+              <button
+                type="button"
+                onClick={() => handleDeleteOrder(selectedOrder.id)}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-md transition-colors"
+              >
+                <Trash size={14} />
+                Delete Order Record
+              </button>
+            </div>
           </div>
         </div>
       )}
