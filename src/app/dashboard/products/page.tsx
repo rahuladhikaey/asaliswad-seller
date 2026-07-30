@@ -250,7 +250,7 @@ export default function SellerProducts() {
     setImageError("");
 
     const selectedCategory = categories.find((c: any) => String(c.id) === String(product.category_id));
-    const matchedMainCategory = (selectedCategory as any)?.main_category || (selectedCategory as any)?.description || product.category || "Grocery";
+    const matchedMainCategory = (selectedCategory as any)?.main_category || (selectedCategory as any)?.description || (product as any).category || "Grocery";
     const matchedSubcategoryId = selectedCategory ? String(selectedCategory.id) : "";
     setSelectedMainCategory(matchedMainCategory);
     setSelectedSubcategoryId(matchedSubcategoryId);
@@ -343,22 +343,39 @@ export default function SellerProducts() {
       });
     }
 
+    if (!form.packagesText.trim()) {
+      setStatusMessage("❌ Please add at least one package (e.g. 250g:120:150:false).");
+      return;
+    }
+
     // Parse packages (Name:Price:MRP:isBestSeller)
-    const packages = form.packagesText
-      ? form.packagesText.split("\n").map((line, index) => {
-          const parts = line.split(":");
-          if (parts.length >= 1 && parts[0].trim() !== "") {
-            return {
-              id: `pkg-${Date.now()}-${index}`,
-              name: parts[0].trim(),
-              price: parts[1] ? Number(parts[1].trim()) : price,
-              mrp: parts[2] ? Number(parts[2].trim()) : (mrp || price),
-              isBestSeller: parts[3] ? parts[3].trim().toLowerCase() === "true" : false
-            };
-          }
+    const packages = form.packagesText.split("\n").map((line, index) => {
+      const parts = line.split(":");
+      if (parts.length >= 1 && parts[0].trim() !== "") {
+        const name = parts[0].trim();
+        const pkgPrice = parts[1] ? Number(parts[1].trim()) : price;
+        const pkgMrp = parts[2] ? Number(parts[2].trim()) : (mrp || price);
+        const isBestSeller = parts[3] ? parts[3].trim().toLowerCase() === "true" : false;
+
+        if (isNaN(pkgPrice) || pkgPrice <= 0) {
           return null;
-        }).filter(Boolean)
-      : [];
+        }
+
+        return {
+          id: `pkg-${Date.now()}-${index}`,
+          name,
+          price: pkgPrice,
+          mrp: pkgMrp,
+          isBestSeller
+        };
+      }
+      return null;
+    }).filter(Boolean);
+
+    if (packages.length === 0) {
+      setStatusMessage("❌ Please enter at least one valid package in the format: Name:Price:MRP:isBestSeller");
+      return;
+    }
 
     const slug = form.name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-");
     const isValidUuid = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
@@ -394,8 +411,6 @@ export default function SellerProducts() {
       mrp,
       description: form.description.trim(),
       category_id: categoryId,
-      category_name: categoryName,
-      category: mainCategoryName,
       image_url: finalMainImageUrl,
       images: cloudinaryImages.length > 0 ? cloudinaryImages : [finalMainImageUrl],
       brand: form.brand.trim() || "asaliswad",
@@ -805,9 +820,10 @@ export default function SellerProducts() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Packages (Format: Name:Price:MRP:isBestSeller) [One per line]</label>
+                    <label className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 block mb-1.5">Packages (Format: Name:Price:MRP:isBestSeller) * [One per line]</label>
                     <textarea
                       rows={2}
+                      required
                       value={form.packagesText}
                       onChange={e => setForm({...form, packagesText: e.target.value})}
                       placeholder="250g:120:150:false&#10;500g:220:280:true"
