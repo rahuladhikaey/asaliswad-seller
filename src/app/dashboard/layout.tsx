@@ -86,7 +86,6 @@ export default function DashboardLayout({
     { name: "Products", href: "/dashboard/products", icon: ShoppingBag },
     { name: "Inventory", href: "/dashboard/inventory", icon: Package },
     { name: "Orders", href: "/dashboard/orders", icon: Receipt },
-    { name: "Payments", href: "/dashboard/payments", icon: CreditCard },
     { name: "Shipping", href: "/dashboard/shipping", icon: Truck },
     { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
     { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
