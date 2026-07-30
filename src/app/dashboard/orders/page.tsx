@@ -104,19 +104,38 @@ export default function SellerOrders() {
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     setStatusMessage("Updating status...");
     try {
-      const { error } = await supabase
-        .from("orders")
-        .update({ order_status: newStatus })
-        .eq("id", orderId);
+      if (newStatus === "ready_to_ship") {
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/shipments/create-shipment`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${session?.access_token || ""}`
+          },
+          body: JSON.stringify({ orderId })
+        });
 
-      if (error) throw error;
-      
-      setStatusMessage("✅ Order status updated!");
-      setOrders(orders.map(o => o.id === orderId ? { ...o, order_status: newStatus } : o));
-      if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder({ ...selectedOrder, order_status: newStatus });
+        const resData = await response.json();
+        if (!response.ok || !resData.success) {
+          throw new Error(resData.message || "Failed to create Shiprocket shipment.");
+        }
+        
+        setStatusMessage("✅ Shipment created & AWB generated successfully!");
+      } else {
+        const { error } = await supabase
+          .from("orders")
+          .update({ order_status: newStatus })
+          .eq("id", orderId);
+
+        if (error) throw error;
+        setStatusMessage("✅ Order status updated!");
       }
-      setTimeout(() => setStatusMessage(""), 2000);
+      
+      await loadData();
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder(null);
+      }
+      setTimeout(() => setStatusMessage(""), 3000);
     } catch (e: any) {
       console.error(e);
       setStatusMessage(`❌ Error: ${e.message || "Failed to update status."}`);
@@ -318,6 +337,46 @@ export default function SellerOrders() {
                   : selectedOrder.shipping_address?.address_line1 || selectedOrder.address || "Address details on invoice"}
               </p>
             </div>
+
+            {/* Courier Tracking Info */}
+            {(selectedOrder.tracking_number || selectedOrder.courier_name) && (
+              <div className="rounded-2xl bg-primary/5 p-4 border border-primary/10 space-y-1.5 text-xs font-bold">
+                <span className="text-[10px] font-black uppercase tracking-wider text-primary block">Shipment & Tracking</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-text-muted block font-black uppercase tracking-wider">Courier Partner</span>
+                    <p className="font-black text-sm text-primary">{selectedOrder.courier_name || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-text-muted block font-black uppercase tracking-wider">AWB Code</span>
+                    <p className="font-black text-sm text-primary">{selectedOrder.tracking_number || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Print Shipping Label and Invoice */}
+            {(selectedOrder.tracking_number || selectedOrder.shipment_id) && (
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <a
+                  href={selectedOrder.shipping_label_url || `https://apiv2.shiprocket.in/v1/external/shipments/print/label/${selectedOrder.shipment_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-xs font-black shadow-md hover:opacity-90 text-center"
+                >
+                  <Package size={14} />
+                  Print Shipping Label
+                </a>
+                <button
+                  type="button"
+                  onClick={() => alert("Invoice print request simulated successfully!")}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-black shadow-md hover:bg-slate-200 text-center"
+                >
+                  <Receipt size={14} />
+                  Print Invoice
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
