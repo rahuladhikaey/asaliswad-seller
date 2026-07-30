@@ -11,7 +11,7 @@ import {
   Receipt, 
   Package, 
   Truck,
-  CreditCard,
+  IndianRupee,
   BarChart3,
   Bell,
   Settings, 
@@ -82,15 +82,16 @@ export default function DashboardLayout({
   };
 
   const navItems = [
-    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Products", href: "/dashboard/products", icon: ShoppingBag },
-    { name: "Inventory", href: "/dashboard/inventory", icon: Package },
-    { name: "Orders", href: "/dashboard/orders", icon: Receipt },
-    { name: "Shipping", href: "/dashboard/shipping", icon: Truck },
-    { name: "Reports", href: "/dashboard/reports", icon: BarChart3 },
+    { name: "Dashboard",     href: "/dashboard",               icon: LayoutDashboard },
+    { name: "Products",      href: "/dashboard/products",      icon: ShoppingBag },
+    { name: "Inventory",     href: "/dashboard/inventory",     icon: Package },
+    { name: "Orders",        href: "/dashboard/orders",        icon: Receipt },
+    { name: "Shipping",      href: "/dashboard/shipping",      icon: Truck },
+    { name: "Earnings",      href: "/dashboard/payments",      icon: IndianRupee },
+    { name: "Reports",       href: "/dashboard/reports",       icon: BarChart3 },
     { name: "Notifications", href: "/dashboard/notifications", icon: Bell },
-    { name: "Settings", href: "/dashboard/settings", icon: Settings },
-    { name: "Support", href: "/dashboard/support", icon: HelpCircle },
+    { name: "Settings",      href: "/dashboard/settings",      icon: Settings },
+    { name: "Support",       href: "/dashboard/support",       icon: HelpCircle },
   ];
 
   useEffect(() => {
