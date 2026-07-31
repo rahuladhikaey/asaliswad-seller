@@ -1,455 +1,458 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@shared/utils/supabaseClient";
-import {
-  TrendingUp,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  Download,
-  Smartphone,
-  IndianRupee,
-  BarChart3,
-  RefreshCw
+import { apiService } from "@/services/apiService";
+import { jsPDF } from "jspdf";
+import { 
+  CreditCard, 
+  IndianRupee, 
+  Download, 
+  Clock, 
+  CheckCircle2, 
+  Eye, 
+  X,
+  FileText,
+  RefreshCw,
+  AlertCircle
 } from "lucide-react";
-import type { SellerSettlement, SellerPaymentDetails } from "@/shared/types/settlements";
 
-type PeriodKey = "daily" | "weekly" | "monthly" | "yearly";
+type Settlement = {
+  id: string;
+  seller_id: string;
+  week_number: number;
+  start_date: string;
+  end_date: string;
+  total_orders: number;
+  gross_sales: number;
+  commission_deducted: number;
+  platform_fees: number;
+  taxes: number;
+  net_amount: number;
+  status: 'PENDING' | 'PAID';
+  transaction_id?: string;
+  payment_date?: string;
+  receipt_number?: string;
+  receipt_pdf_url?: string;
+  notes?: string;
+  email_sent: boolean;
+  created_at: string;
+};
 
-function getDateRange(period: PeriodKey): { start: Date; end: Date } {
-  const now = new Date();
-  const end = new Date(now);
+export default function SellerPaymentsPage() {
+  const [loading, setLoading] = useState(true);
+  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const [sellerId, setSellerId] = useState<string>("");
+  const [sellerName, setSellerName] = useState<string>("");
+  
+  // Details Modal
+  const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
+  const [settlementOrders, setSettlementOrders] = useState<any[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
 
-  switch (period) {
-    case "daily": {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    }
-    case "weekly": {
-      const day = now.getDay(); // 0 = Sunday
-      const start = new Date(now);
-      start.setDate(now.getDate() - day);
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    }
-    case "monthly": {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endM = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      return { start, end: endM };
-    }
-    case "yearly": {
-      const start = new Date(now.getFullYear(), 0, 1);
-      const endY = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-      return { start, end: endY };
-    }
-  }
-}
-
-function formatPeriodLabel(period: PeriodKey): string {
-  const { start, end } = getDateRange(period);
-  const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
-  switch (period) {
-    case "daily":   return `Today, ${start.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;
-    case "weekly":  return `${start.toLocaleDateString("en-IN", opts)} – ${end.toLocaleDateString("en-IN", opts)}`;
-    case "monthly": return start.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-    case "yearly":  return `FY ${start.getFullYear()}`;
-  }
-}
-
-export default function SellerEarningsPage() {
-  const [loading, setLoading]               = useState(true);
-  const [sellerUser, setSellerUser]         = useState<any>(null);
-  const [allOrders, setAllOrders]           = useState<any[]>([]);
-  const [settlements, setSettlements]       = useState<SellerSettlement[]>([]);
-  const [period, setPeriod]                 = useState<PeriodKey>("weekly");
-  const [paymentConfig, setPaymentConfig]   = useState<SellerPaymentDetails>({
-    upi_id: "", payment_method: "PhonePe", account_name: "", phone_number: ""
+  // Stats
+  const [stats, setStats] = useState({
+    totalPaid: 0,
+    totalPending: 0,
+    availableBalance: 0
   });
-  const [saveStatus, setSaveStatus]         = useState("");
-  const [commissionRate, setCommissionRate] = useState(10);
 
-  async function loadData() {
+  const loadData = async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      setSellerUser(user);
 
-      // Payment config
-      const storedConfig = localStorage.getItem(`seller_payment_config_${user.id}`);
-      if (storedConfig) {
-        try { setPaymentConfig(JSON.parse(storedConfig)); } catch (_) {}
-      } else if (user.user_metadata?.upi_id) {
-        setPaymentConfig({
-          upi_id: user.user_metadata.upi_id || "",
-          payment_method: user.user_metadata.payment_method || "PhonePe",
-          account_name: user.user_metadata.full_name || "",
-          phone_number: user.phone || user.user_metadata.phone || ""
-        });
-      }
-
-      // Orders (all; we filter client-side by period)
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("id, total_amount, order_status, created_at, seller_id, payment_status")
-        .order("created_at", { ascending: false });
-
-      setAllOrders(ordersData || []);
-
-      // Commission rate from admin config (sellers table or global config)
-      const { data: sellerRow } = await supabase
+      // Get seller profile id
+      const { data: seller } = await supabase
         .from("sellers")
-        .select("commission_rate")
+        .select("id, business_name")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (sellerRow?.commission_rate) setCommissionRate(Number(sellerRow.commission_rate));
-
-      // Settlements – real-time subscription keeps this fresh
-      const { data: setRes } = await supabase
-        .from("seller_settlements")
-        .select("*")
-        .eq("seller_id", user.id)
-        .order("created_at", { ascending: false });
-
-      setSettlements(setRes || []);
+      if (seller) {
+        setSellerId(seller.id);
+        setSellerName(seller.business_name);
+        
+        // Fetch settlements
+        const res = await apiService.getSellerSettlements(seller.id);
+        if (res.success && res.data) {
+          const sorted = (res.data || []) as Settlement[];
+          setSettlements(sorted);
+          calculateStats(sorted, seller.id);
+        }
+      }
     } catch (err) {
-      console.error("Error loading seller earnings:", err);
+      console.error("Failed to load seller settlements:", err);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     loadData();
 
-    // Realtime – whenever admin marks a settlement paid, this updates
+    // Setup realtime changes subscriptions
     const channel = supabase
-      .channel("seller-earnings-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "seller_settlements" }, () => loadData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => loadData())
+      .channel("seller-settlement-updates")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "seller_settlements" },
+        () => {
+          loadData();
+        }
+      )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  /* ─── Derived Earnings ─── */
-  const { start, end } = getDateRange(period);
-
-  const periodOrders = allOrders.filter(o => {
-    const d = new Date(o.created_at);
-    return d >= start && d <= end &&
-      (o.order_status === "DELIVERED" || o.order_status === "delivered" ||
-       o.order_status === "SHIPPED"   || o.order_status === "shipped");
-  });
-
-  const grossEarnings       = periodOrders.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
-  const commissionDeducted  = grossEarnings * (commissionRate / 100);
-  const netEarnings         = grossEarnings - commissionDeducted;
-
-  // All-time for the settlement ledger denominator
-  const allDelivered        = allOrders.filter(o =>
-    o.order_status === "DELIVERED" || o.order_status === "delivered" ||
-    o.order_status === "SHIPPED"   || o.order_status === "shipped"
-  );
-  const allTimeGross        = allDelivered.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
-  const allTimeNet          = allTimeGross * (1 - commissionRate / 100);
-  const totalPaid           = settlements.filter(s => s.status === "PAID").reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const pendingBalance      = Math.max(0, allTimeNet - totalPaid);
-
-  /* ─── UPI Save ─── */
-  const handleSavePaymentConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!paymentConfig.upi_id) { setSaveStatus("❌ Please enter a valid UPI ID or PhonePe Number"); return; }
-    if (sellerUser) {
-      localStorage.setItem(`seller_payment_config_${sellerUser.id}`, JSON.stringify(paymentConfig));
-      try {
-        await supabase.from("sellers").update({ upi_id: paymentConfig.upi_id, phonepay_no: paymentConfig.upi_id, updated_at: new Date().toISOString() }).eq("user_id", sellerUser.id);
-      } catch (_) {}
-      try { await supabase.auth.updateUser({ data: { upi_id: paymentConfig.upi_id, payment_method: paymentConfig.payment_method } }); } catch (_) {}
+  const calculateStats = async (data: Settlement[], sId: string) => {
+    const paid = data.filter(s => s.status === "PAID").reduce((sum, s) => sum + Number(s.net_amount), 0);
+    const pending = data.filter(s => s.status === "PENDING").reduce((sum, s) => sum + Number(s.net_amount), 0);
+    
+    // Get live available balance (delivered/completed orders not yet included in a paid settlement)
+    try {
+      const revRes = await apiService.getRevenueSummary(sId);
+      if (revRes.success && revRes.data) {
+        setStats({
+          totalPaid: paid,
+          totalPending: pending,
+          availableBalance: Number(revRes.data.availableBalance || 0)
+        });
+      } else {
+        setStats({
+          totalPaid: paid,
+          totalPending: pending,
+          availableBalance: 0
+        });
+      }
+    } catch (e) {
+      setStats({
+        totalPaid: paid,
+        totalPending: pending,
+        availableBalance: 0
+      });
     }
-    setSaveStatus("✅ UPI & PhonePe payout details saved successfully!");
-    setTimeout(() => setSaveStatus(""), 4000);
   };
 
-  /* ─── CSV Download ─── */
-  const handleDownloadStatement = () => {
-    const rows = [
-      ["ASALISWAD Seller Earnings Statement"],
-      [`Seller: ${sellerUser?.email || "N/A"}`],
-      [`Period: ${formatPeriodLabel(period)}`],
-      [`Generated: ${new Date().toLocaleDateString("en-IN")}`],
-      [""],
-      ["Metric", "Amount (INR)"],
-      ["Gross Earnings (period)", grossEarnings.toFixed(2)],
-      [`Commission (${commissionRate}%)`, commissionDeducted.toFixed(2)],
-      ["Net Earnings (period)", netEarnings.toFixed(2)],
-      ["All-Time Pending Balance", pendingBalance.toFixed(2)],
-      [""],
-      ["Settlement History"],
-      ["Week", "Date", "Amount", "Method", "UTR", "Status"],
-      ...settlements.map((s, i) => [
-        `Week ${settlements.length - i}`,
-        new Date(s.created_at).toLocaleDateString("en-IN"),
-        s.amount, s.payment_method, s.utr_number || "N/A", s.status
-      ])
-    ];
-    const csv = "data:text/csv;charset=utf-8," + rows.map(r => r.join(",")).join("\n");
-    const link = document.createElement("a");
-    link.href = encodeURI(csv);
-    link.download = `Earnings_${period}_${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleOpenDetails = async (s: Settlement) => {
+    setSelectedSettlement(s);
+    setModalLoading(true);
+    setSettlementOrders([]);
+    try {
+      const res = await apiService.getSettlementDetails(s.id);
+      if (res.success) {
+        setSettlementOrders(res.data.orders || []);
+      }
+    } catch (err) {
+      console.error("Failed to load details:", err);
+    } finally {
+      setModalLoading(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[70vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary" />
-          <p className="text-xs font-bold text-text-muted animate-pulse">Loading your earnings ledger...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleDownloadPDFReceipt = (s: Settlement) => {
+    if (s.receipt_pdf_url) {
+      window.open(s.receipt_pdf_url, "_blank");
+    } else {
+      // client-side generator fallback if storage link missing
+      generateReceiptPDFFallback(s);
+    }
+  };
 
-  const PERIOD_TABS: { key: PeriodKey; label: string }[] = [
-    { key: "daily",   label: "Today" },
-    { key: "weekly",  label: "This Week" },
-    { key: "monthly", label: "This Month" },
-    { key: "yearly",  label: "This Year" }
-  ];
+  const generateReceiptPDFFallback = (s: Settlement) => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4"
+    });
+
+    // Branding Banner
+    doc.setFillColor(5, 150, 105);
+    doc.rect(0, 0, 210, 40, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text("ASALISWAD MARKETPLACE", 15, 18);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("WEEKLY SELLER SETTLEMENT RECEIPT (DUPLICATE)", 15, 25);
+
+    // Header Right
+    doc.setFont("helvetica", "bold");
+    doc.text(`RECEIPT: ${s.receipt_number || "REC-PENDING"}`, 130, 18);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date Paid: ${s.payment_date ? new Date(s.payment_date).toLocaleString() : "Pending"}`, 130, 25);
+
+    // Seller & Settlement metadata
+    doc.setTextColor(30, 41, 59);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("SELLER INFORMATION", 15, 50);
+    doc.line(15, 52, 195, 52);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Seller ID: ${s.seller_id}`, 15, 60);
+    doc.text(`Business Name: ${sellerName}`, 15, 66);
+    doc.text(`Settlement Week: Week ${s.week_number}`, 15, 72);
+    doc.text(`Period Range: ${new Date(s.start_date).toLocaleDateString()} - ${new Date(s.end_date).toLocaleDateString()}`, 15, 78);
+    doc.text(`Transaction Reference: ${s.transaction_id || "N/A"}`, 15, 84);
+
+    // Summary Box
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, 100, 180, 50, "F");
+    doc.rect(15, 100, 180, 50, "D");
+
+    doc.setFont("helvetica", "bold");
+    doc.text("FINANCIAL SUMMARY", 20, 108);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Gross Sales Revenue:`, 20, 118);
+    doc.text(`₹ ${s.gross_sales}`, 150, 118, { align: "right" });
+
+    doc.text(`Marketplace Commission:`, 20, 124);
+    doc.text(`- ₹ ${s.commission_deducted}`, 150, 124, { align: "right" });
+
+    doc.text(`App Platform Fees:`, 20, 130);
+    doc.text(`- ₹ ${s.platform_fees}`, 150, 130, { align: "right" });
+
+    doc.text(`Taxes (GST):`, 20, 136);
+    doc.text(`- ₹ ${s.taxes}`, 150, 136, { align: "right" });
+
+    // Net
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(`NET DISBURSED AMOUNT:`, 20, 144);
+    doc.text(`₹ ${s.net_amount}`, 150, 144, { align: "right" });
+
+    doc.save(`Receipt_Week_${s.week_number}_${sellerName.replace(/\s+/g, "_")}.pdf`);
+  };
 
   return (
-    <div className="p-6 md:p-10 space-y-8 max-w-6xl mx-auto">
-
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Merchant Earnings</span>
-          <h1 className="text-2xl font-black tracking-tight text-text-primary mt-1">Income & Settlement Ledger</h1>
-          <p className="text-xs font-medium text-text-muted mt-1">
-            Track gross income across daily, weekly, monthly & yearly periods. Settlements auto-update when Super Admin pays.
-          </p>
+          <h1 className="text-2xl font-black tracking-tight">Settlements Ledger</h1>
+          <p className="text-xs font-bold text-text-muted">Review weekly payout calendars, download transaction receipts, and view live earnings.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={loadData}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-foreground/[0.05] hover:bg-foreground/[0.1] text-text-primary font-bold text-xs transition-colors"
-          >
-            <RefreshCw size={14} /> Refresh
-          </button>
-          <button
-            onClick={handleDownloadStatement}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-foreground/[0.05] hover:bg-foreground/[0.1] text-text-primary font-bold text-xs transition-colors"
-          >
-            <Download size={14} /> Export CSV
-          </button>
+        <button onClick={loadData} className="btn bg-foreground/[0.02] border border-foreground/[0.08] text-text-primary text-xs font-bold px-4 py-2.5 rounded-2xl flex items-center gap-2 hover:bg-foreground/[0.04]">
+          <RefreshCw size={14} /> Refresh
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-foreground/[0.02] border border-foreground/[0.06] p-6 rounded-3xl relative overflow-hidden">
+          <p className="text-[10px] font-black uppercase text-text-muted">Total Settled (Paid)</p>
+          <p className="text-3xl font-black text-emerald-600 mt-2">₹{stats.totalPaid.toLocaleString("en-IN")}</p>
         </div>
-      </div>
-
-      {/* ── Period Toggle Tabs ── */}
-      <div className="flex flex-wrap gap-2">
-        {PERIOD_TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setPeriod(t.key)}
-            className={`px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-sm ${
-              period === t.key
-                ? "bg-primary text-white shadow-primary/20 shadow-md"
-                : "bg-foreground/[0.04] border border-foreground/[0.08] text-text-muted hover:text-text-primary hover:bg-foreground/[0.08]"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Period Label ── */}
-      <div className="flex items-center gap-2 text-xs font-bold text-text-muted">
-        <CalendarDays size={14} className="text-primary" />
-        <span>Showing earnings for: <strong className="text-text-primary">{formatPeriodLabel(period)}</strong></span>
-      </div>
-
-      {/* ── SINGLE Gross Earnings Hero Card ── */}
-      <div className="rounded-[2.5rem] bg-gradient-to-br from-primary via-emerald-700 to-emerald-950 p-8 text-white shadow-2xl shadow-primary/20 relative overflow-hidden">
-        {/* decorative blob */}
-        <div className="absolute -top-10 -right-10 h-48 w-48 rounded-full bg-white/5 blur-2xl pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="h-10 w-10 rounded-2xl bg-white/10 flex items-center justify-center">
-              <IndianRupee size={20} />
-            </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80">Total Gross Earnings</span>
-          </div>
-          <p className="text-5xl font-black tracking-tight">
-            ₹{grossEarnings.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs font-bold opacity-70 mt-2">
-            {periodOrders.length} delivered order{periodOrders.length !== 1 ? "s" : ""} · {formatPeriodLabel(period)}
-          </p>
-
-          {/* Mini breakdown */}
-          <div className="mt-6 grid grid-cols-3 gap-4 pt-6 border-t border-white/10">
-            <div>
-              <p className="text-[10px] font-black uppercase opacity-60 mb-1">Commission ({commissionRate}%)</p>
-              <p className="text-lg font-black">₹{commissionDeducted.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase opacity-60 mb-1">Net Earnings</p>
-              <p className="text-lg font-black text-emerald-300">₹{netEarnings.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase opacity-60 mb-1">Pending Balance</p>
-              <p className="text-lg font-black text-amber-300">₹{pendingBalance.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</p>
-            </div>
-          </div>
+        <div className="bg-foreground/[0.02] border border-foreground/[0.06] p-6 rounded-3xl relative overflow-hidden">
+          <p className="text-[10px] font-black uppercase text-text-muted">Pending Payouts</p>
+          <p className="text-3xl font-black text-amber-600 mt-2">₹{stats.totalPending.toLocaleString("en-IN")}</p>
+        </div>
+        <div className="bg-foreground/[0.02] border border-foreground/[0.06] p-6 rounded-3xl relative overflow-hidden">
+          <p className="text-[10px] font-black uppercase text-text-muted">Available Payout Balance</p>
+          <p className="text-3xl font-black text-text-primary mt-2">₹{stats.availableBalance.toLocaleString("en-IN")}</p>
         </div>
       </div>
 
-      {/* ── UPI / PhonePe Receiver Settings ── */}
-      <div className="p-6 md:p-8 rounded-3xl bg-foreground/[0.02] border border-foreground/[0.06] space-y-5">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-            <Smartphone size={20} />
-          </div>
-          <div>
-            <h2 className="text-base font-black text-text-primary">PhonePe & UPI Settlement Receiver</h2>
-            <p className="text-xs font-medium text-text-muted">Enter your active UPI ID or PhonePe registered mobile number where Super Admin will send settlements.</p>
-          </div>
+      {/* Settlement Cards Grid */}
+      {loading ? (
+        <div className="text-center py-12 text-text-muted font-bold text-xs flex justify-center items-center gap-2">
+          <RefreshCw className="animate-spin" size={16} /> Retrieving payment weeks...
         </div>
-
-        {saveStatus && (
-          <div className={`p-4 rounded-2xl text-xs font-bold ${saveStatus.includes("✅") ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : "bg-rose-500/10 text-rose-600 border border-rose-500/20"}`}>
-            {saveStatus}
-          </div>
-        )}
-
-        <form onSubmit={handleSavePaymentConfig} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1">Preferred Transfer Method</label>
-            <select
-              value={paymentConfig.payment_method}
-              onChange={(e) => setPaymentConfig(p => ({ ...p, payment_method: e.target.value as any }))}
-              className="w-full h-12 rounded-2xl border border-foreground/10 bg-background px-4 text-xs font-bold text-text-primary outline-none focus:border-primary"
-            >
-              <option value="PhonePe">PhonePe Mobile Number / UPI</option>
-              <option value="UPI">Google Pay / Generic UPI ID</option>
-              <option value="GPay">GPay (Google Pay)</option>
-              <option value="Bank Transfer">Bank Transfer (IMPS/NEFT)</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-text-muted block mb-1">UPI ID or PhonePe Number</label>
-            <input
-              type="text"
-              placeholder="e.g. 9876543210@ybl or merchant@upi"
-              value={paymentConfig.upi_id}
-              onChange={(e) => setPaymentConfig(p => ({ ...p, upi_id: e.target.value }))}
-              className="w-full h-12 rounded-2xl border border-foreground/10 bg-background px-4 text-xs font-bold text-text-primary outline-none focus:border-primary placeholder:text-text-muted/50"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="submit"
-              className="w-full h-12 rounded-2xl bg-primary text-white font-black text-xs uppercase tracking-wider hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
-            >
-              Save Settlement Details
-            </button>
-          </div>
-        </form>
-      </div>
-
-      {/* ── Weekly Settlement History Table ── */}
-      <div className="p-6 md:p-8 rounded-3xl bg-foreground/[0.02] border border-foreground/[0.06] space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-black text-text-primary flex items-center gap-2">
-              <BarChart3 size={18} className="text-primary" />
-              Weekly Settlement Payout History
-            </h2>
-            <p className="text-xs font-medium text-text-muted mt-0.5">
-              Auto-updated when Super Admin marks weekly payment as completed.
-            </p>
-          </div>
-          <span className="text-xs font-bold text-text-muted shrink-0">{settlements.length} Transfers Logged</span>
+      ) : settlements.length === 0 ? (
+        <div className="text-center py-12 text-text-muted font-bold text-xs bg-foreground/[0.02] rounded-3xl border border-foreground/[0.06]">
+          No settlements periods have generated yet for your account.
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-foreground/[0.06] text-[10px] font-black uppercase tracking-widest text-text-muted">
-                <th className="py-3 px-4">Week</th>
-                <th className="py-3 px-4">Date Paid</th>
-                <th className="py-3 px-4">Gross Amount</th>
-                <th className="py-3 px-4">Net Amount</th>
-                <th className="py-3 px-4">Method</th>
-                <th className="py-3 px-4">UTR / Transaction Ref</th>
-                <th className="py-3 px-4">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-foreground/[0.04] text-xs font-bold text-text-primary">
-              {settlements.map((item, idx) => {
-                const grossAmt = Number(item.amount) || 0;
-                const netAmt   = grossAmt * (1 - commissionRate / 100);
-                return (
-                  <tr key={item.id} className="hover:bg-foreground/[0.02] transition-colors">
-                    <td className="py-3.5 px-4 font-black text-primary">
-                      Week {settlements.length - idx}
-                    </td>
-                    <td className="py-3.5 px-4 text-text-muted font-medium">
-                      {new Date(item.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                    </td>
-                    <td className="py-3.5 px-4 font-black text-text-primary">
-                      ₹{grossAmt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3.5 px-4 font-black text-emerald-600">
-                      ₹{netAmt.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-1 rounded-full bg-foreground/[0.05] text-[10px] font-black uppercase tracking-wider">
-                        {item.payment_method || "PhonePe"}
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {settlements.map((s) => {
+            const isLocked = s.status === "PENDING" && s.week_number > 1 && 
+              settlements.some(other => other.week_number < s.week_number && other.status === "PENDING");
+            
+            return (
+              <div 
+                key={s.id} 
+                className={`bg-foreground/[0.02] border rounded-3xl p-6 flex flex-col justify-between transition-all hover:shadow-md ${
+                  s.status === "PAID" 
+                    ? "border-emerald-600/20" 
+                    : isLocked 
+                      ? "border-foreground/[0.04] opacity-60" 
+                      : "border-amber-600/20"
+                }`}
+              >
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">Week {s.week_number}</span>
+                    {s.status === "PAID" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 text-[9px] font-black uppercase">
+                        <CheckCircle2 size={10} /> Disbursed
                       </span>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-xs text-primary">
-                      {item.utr_number || <span className="text-text-muted italic font-medium">Pending Transfer</span>}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {item.status === "PAID" ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                          <CheckCircle2 size={10} /> Paid
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                          <Clock size={10} /> Pending
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                    ) : isLocked ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-foreground/[0.06] text-text-muted px-2.5 py-1 text-[9px] font-black uppercase">
+                        Locked
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-600 px-2.5 py-1 text-[9px] font-black uppercase">
+                        <Clock size={10} /> Pending
+                      </span>
+                    )}
+                  </div>
 
-              {settlements.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <TrendingUp size={32} className="text-text-muted/30" />
-                      <p className="text-text-muted font-bold text-xs">No settlement transfers logged yet.</p>
-                      <p className="text-text-muted/60 font-medium text-[11px]">Pending balances will be transferred by Super Admin every week.</p>
+                  <h3 className="text-xs font-bold text-text-muted">
+                    {new Date(s.start_date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short' })} - {new Date(s.end_date).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </h3>
+
+                  <div className="my-4">
+                    <p className="text-[10px] font-black uppercase text-text-muted">Net Payout</p>
+                    <p className="text-2xl font-black text-text-primary">₹{Number(s.net_amount).toLocaleString("en-IN")}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mt-4 border-t border-foreground/[0.06] pt-4">
+                  {s.status === "PAID" ? (
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                      <CheckCircle2 size={12} className="shrink-0" />
+                      <span>Payment Completed. Check your email for your settlement receipt.</span>
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  ) : isLocked ? (
+                    <div className="text-[10px] text-text-muted font-bold flex items-center gap-1">
+                      <AlertCircle size={12} className="shrink-0" />
+                      <span>Locked until earlier weeks are paid.</span>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
+                      <Clock size={12} className="shrink-0" />
+                      <span>Disbursements are processed weekly.</span>
+                    </div>
+                  )}
 
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleOpenDetails(s)} 
+                      className="flex-1 bg-foreground/[0.04] text-text-primary text-xs font-black py-2.5 px-3 rounded-2xl flex items-center justify-center gap-1 hover:bg-foreground/[0.08] transition-all"
+                    >
+                      <Eye size={12} /> View Details
+                    </button>
+                    {s.status === "PAID" && (
+                      <button 
+                        onClick={() => handleDownloadPDFReceipt(s)} 
+                        className="bg-primary text-white text-xs font-black p-2.5 rounded-2xl flex items-center justify-center hover:bg-primary/95 transition-all shadow-md shadow-primary/10"
+                        title="Download Receipt"
+                      >
+                        <Download size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {selectedSettlement && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-xl bg-background border border-foreground/[0.08] rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center bg-foreground/[0.02] px-6 py-4 border-b border-foreground/[0.06]">
+              <div>
+                <h3 className="text-sm font-black uppercase">Settlement breakdown</h3>
+                <p className="text-[10px] text-text-muted font-mono">{selectedSettlement.id}</p>
+              </div>
+              <button onClick={() => setSelectedSettlement(null)} className="text-text-muted hover:text-text-primary">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {/* Financial Breakdown Card */}
+              <div className="bg-foreground/[0.02] p-5 border border-foreground/[0.06] rounded-3xl space-y-3 text-xs font-bold">
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Gross Sales Revenue</span>
+                  <span className="text-text-primary font-mono">₹{Number(selectedSettlement.gross_sales).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-rose-600">
+                  <span>Marketplace Commission Deducted</span>
+                  <span className="font-mono">-₹{Number(selectedSettlement.commission_deducted).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-rose-600">
+                  <span>App Platform Fees Deducted</span>
+                  <span className="font-mono">-₹{Number(selectedSettlement.platform_fees).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-rose-600">
+                  <span>Taxes (GST) Deducted</span>
+                  <span className="font-mono">-₹{Number(selectedSettlement.taxes).toFixed(2)}</span>
+                </div>
+                <hr className="border-foreground/[0.06] my-2" />
+                <div className="flex justify-between font-black text-sm text-emerald-600">
+                  <span>Net Disbursed Settlement</span>
+                  <span className="font-mono">₹{Number(selectedSettlement.net_amount).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Order List */}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-text-muted block border-b border-foreground/[0.06] pb-2">Included Orders ({settlementOrders.length})</h4>
+                {modalLoading ? (
+                  <div className="text-center py-4 font-bold text-text-muted text-[10px]">Loading orders list...</div>
+                ) : settlementOrders.length === 0 ? (
+                  <div className="text-center py-4 text-text-muted text-xs font-bold bg-foreground/[0.02] rounded-2xl">No orders fall within this cycle yet.</div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
+                    {settlementOrders.map(o => (
+                      <div key={o.id} className="flex justify-between items-center p-3 border border-foreground/[0.06] rounded-2xl text-xs font-bold">
+                        <div>
+                          <span className="block text-text-primary">Order #{o.order_number}</span>
+                          <span className="text-[10px] text-text-muted font-medium">{new Date(o.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-mono text-text-primary">₹{Number(o.total_amount).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Details info (only if Paid) */}
+              {selectedSettlement.status === "PAID" && (
+                <div className="bg-emerald-500/5 p-4 border border-emerald-500/10 rounded-2xl text-xs font-bold space-y-2">
+                  <h4 className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Payment References</h4>
+                  <div className="grid grid-cols-2 gap-2 text-text-muted">
+                    <div>
+                      <p>Receipt Number:</p>
+                      <p className="text-text-primary font-mono">{selectedSettlement.receipt_number}</p>
+                    </div>
+                    <div>
+                      <p>PhonePe Txn ID:</p>
+                      <p className="text-text-primary font-mono">{selectedSettlement.transaction_id}</p>
+                    </div>
+                    <div className="col-span-2 pt-1.5 border-t border-foreground/[0.04]">
+                      <p>Disbursement Date:</p>
+                      <p className="text-text-primary">{new Date(selectedSettlement.payment_date || "").toLocaleString()}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-foreground/[0.06] bg-foreground/[0.02]">
+              <button onClick={() => setSelectedSettlement(null)} className="w-full py-2.5 rounded-2xl border border-foreground/[0.08] text-text-secondary text-xs font-black hover:bg-foreground/[0.04]">
+                Close Breakdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

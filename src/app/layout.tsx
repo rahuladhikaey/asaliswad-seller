@@ -28,7 +28,7 @@ export default function RootLayout({
 			suppressHydrationWarning
 			className={`${geistMono.variable} ${outfit.variable} h-full antialiased light`}
 		>
-			<body className="min-h-full font-sans overflow-x-hidden bg-background text-foreground">
+			<body className="min-h-full font-sans overflow-x-hidden bg-background text-foreground" suppressHydrationWarning>
 				<ThemeSync />
 				{children}
 			</body>

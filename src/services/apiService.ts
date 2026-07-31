@@ -16,7 +16,11 @@ export const apiService = {
   getSellerOrders: (sellerId: string) => apiFetch(`/api/orders?sellerId=${sellerId}`),
   updateOrderStatus: (id: string | number, statusData: any) => apiFetch(`/api/orders/${id}`, { method: 'PUT', body: JSON.stringify(statusData) }),
 
-  // Support & Pickup Locations
   // Media Upload (Cloudinary CDN -> Supabase B)
   uploadProductImage: (imageBase64: string, fileName?: string) => apiFetch('/api/uploads/seller-product-image', { method: 'POST', body: JSON.stringify({ imageBase64, fileName }) }),
+
+  // Weekly Settlements & Revenue
+  getSellerSettlements: (sellerId: string) => apiFetch(`/api/settlements/seller/${sellerId}`),
+  getRevenueSummary: (sellerId: string) => apiFetch(`/api/settlements/revenue/summary?sellerId=${sellerId}`),
+  getSettlementDetails: (id: string) => apiFetch(`/api/settlements/details/${id}`),
 };
