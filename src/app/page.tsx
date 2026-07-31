@@ -86,6 +86,13 @@ function LoginContent() {
         .eq("email", email.trim().toLowerCase())
         .maybeSingle();
 
+      if (!sellerData) {
+        setError("Access Denied. Your seller account does not exist.");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
       if (sellerData) {
         if (sellerData.status === "pending") {
           setStatusMessage("⏳ Your seller account registration is currently pending Super Admin verification. You will be notified once approved.");

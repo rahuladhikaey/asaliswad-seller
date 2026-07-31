@@ -49,6 +49,12 @@ export default function DashboardLayout({
           .eq("user_id", user.id)
           .maybeSingle();
 
+        if (!seller) {
+          await supabase.auth.signOut();
+          router.push("/?error=unauthorized");
+          return;
+        }
+
         if (seller) {
           const accStatus = seller.account_status || seller.status || "Active";
           setIsSuspended(accStatus.toLowerCase() === "suspended");
