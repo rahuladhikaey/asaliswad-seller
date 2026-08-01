@@ -172,7 +172,7 @@ export default function SellerRegisterPage() {
             if (signInData?.user?.id) {
               userId = signInData.user.id;
             } else {
-              const finalError = clientSignInError?.message || clientSignUpError?.message || apiError || "Failed to register seller in Supabase Authentication.";
+              const finalError = apiError || clientSignUpError?.message || clientSignInError?.message || "Failed to register seller in Supabase Authentication.";
               throw new Error(finalError);
             }
           }
