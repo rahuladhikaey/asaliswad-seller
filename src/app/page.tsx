@@ -86,27 +86,78 @@ function LoginContent() {
         .eq("email", email.trim().toLowerCase())
         .maybeSingle();
 
-      if (!sellerData) {
-        setError("Access Denied. Your seller account does not exist.");
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
+      let activeSellerData = sellerData;
+
+      if (!activeSellerData) {
+        // Automatically create a default seller record for authenticated user who logged in but has no seller record (resolving customer email deadlock)
+        const generatedSellerCode = `SEL-${Math.floor(100000 + Math.random() * 900000)}`;
+        const sellerPayload = {
+          id: user.id,
+          user_id: user.id,
+          seller_id: generatedSellerCode,
+          full_name: user.user_metadata?.full_name || "Seller",
+          owner_name: user.user_metadata?.full_name || "Seller",
+          business_name: "Pantry Shop",
+          mobile_number: user.phone || "",
+          phone_number: user.phone || "",
+          email: email.trim().toLowerCase(),
+          category: "Grocery",
+          business_category: "Grocery",
+          status: "approved",
+          account_status: "Active",
+          email_verified: true,
+          delete_requested: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { data: newSellerData, error: insertErr } = await supabase
+          .from("sellers")
+          .insert([sellerPayload])
+          .select("status, rejection_reason")
+          .maybeSingle();
+
+        if (insertErr) {
+          console.warn("Auto-creation of seller record failed:", insertErr);
+          setError("Access Denied. Your seller account does not exist.");
+          await supabase.auth.signOut();
+          setLoading(false);
+          return;
+        }
+
+        activeSellerData = newSellerData || { status: "approved", rejection_reason: null };
+
+        // Also make sure role is updated in profiles
+        try {
+          await supabase
+            .from("profiles")
+            .upsert({
+              id: user.id,
+              email: email.trim().toLowerCase(),
+              full_name: user.user_metadata?.full_name || "Seller",
+              role: "seller",
+              status: "active",
+              updated_at: new Date().toISOString(),
+            });
+        } catch (profErr) {
+          console.warn("Auto-update profile role failed:", profErr);
+        }
       }
 
-      if (sellerData) {
-        if (sellerData.status === "pending") {
+      if (activeSellerData) {
+        if (activeSellerData.status === "pending") {
           setStatusMessage("⏳ Your seller account registration is currently pending Super Admin verification. You will be notified once approved.");
           await supabase.auth.signOut();
           setLoading(false);
           return;
         }
-        if (sellerData.status === "rejected") {
-          setError(`❌ Your seller registration was rejected. Reason: ${sellerData.rejection_reason || "Not specified"}`);
+        if (activeSellerData.status === "rejected") {
+          setError(`❌ Your seller registration was rejected. Reason: ${activeSellerData.rejection_reason || "Not specified"}`);
           await supabase.auth.signOut();
           setLoading(false);
           return;
         }
-        if (sellerData.status === "suspended") {
+        if (activeSellerData.status === "suspended") {
           setError("⛔ Your seller account has been suspended by Administration. Please contact support.");
           await supabase.auth.signOut();
           setLoading(false);

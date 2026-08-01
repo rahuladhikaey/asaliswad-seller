@@ -149,8 +149,9 @@ export default function SellerRegisterPage() {
         if (signupRes.ok && signupData.success && signupData.user?.id) {
           userId = signupData.user.id;
         } else {
+          const apiError = signupData.error;
           // Client-side fallback to supabase.auth.signUp
-          const { data: clientSignUpData } = await supabase.auth.signUp({
+          const { data: clientSignUpData, error: clientSignUpError } = await supabase.auth.signUp({
             email: normalizedEmail,
             password: password,
             options: {
@@ -164,15 +165,23 @@ export default function SellerRegisterPage() {
           if (clientSignUpData?.user?.id) {
             userId = clientSignUpData.user.id;
           } else {
-            const { data: signInData } = await supabase.auth.signInWithPassword({
+            const { data: signInData, error: clientSignInError } = await supabase.auth.signInWithPassword({
               email: normalizedEmail,
               password: password,
             });
-            userId = signInData?.user?.id;
+            if (signInData?.user?.id) {
+              userId = signInData.user.id;
+            } else {
+              const finalError = clientSignInError?.message || clientSignUpError?.message || apiError || "Failed to register seller in Supabase Authentication.";
+              throw new Error(finalError);
+            }
           }
         }
-      } catch (authCatchErr) {
+      } catch (authCatchErr: any) {
         console.warn("Auth signup notice:", authCatchErr);
+        setError(authCatchErr?.message || "Could not verify your authentication account with Supabase Auth. Please try again.");
+        setLoading(false);
+        return;
       }
 
       const isValidUuid = (val: any) => typeof val === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);

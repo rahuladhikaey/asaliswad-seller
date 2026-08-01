@@ -60,9 +60,12 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      if (signUpData?.user) {
+      const hasExistError = signUpError?.message?.toLowerCase().includes("already") || signUpError?.status === 422;
+      const hasEmptyIdentities = signUpData?.user && (!signUpData.user.identities || signUpData.user.identities.length === 0);
+
+      if (signUpData?.user && !hasEmptyIdentities && !signUpError) {
         user = signUpData.user;
-      } else if (signUpError) {
+      } else if (signUpError || hasEmptyIdentities) {
         // If user already exists in auth.users, attempt sign in to verify credentials
         const { data: signInData } = await supabaseServer.auth.signInWithPassword({
           email: normalizedEmail,
@@ -73,7 +76,11 @@ export async function POST(request: NextRequest) {
           user = signInData.user;
         } else {
           return NextResponse.json(
-            { success: false, error: signUpError.message || "Failed to register seller in Supabase Authentication." },
+            { 
+              success: false, 
+              error: "This email is already registered. If you are the owner, please sign in with your correct password, or reset it.",
+              code: "user_already_exists" 
+            },
             { status: 400 }
           );
         }
