@@ -130,7 +130,11 @@ export default function DashboardLayout({
         {/* Brand Logo Header */}
         <div className="flex h-20 items-center justify-between px-6 border-b border-foreground/[0.06]">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-white font-black text-sm">AS</span>
+            <img
+              src="/official-logo.png"
+              alt="Asali Swad Logo"
+              className="h-8 w-8 rounded-full object-cover border border-foreground/[0.06]"
+            />
             <span className="text-lg font-black tracking-tight">Asali Swad</span>
           </Link>
           <button 

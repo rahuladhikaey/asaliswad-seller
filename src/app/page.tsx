@@ -176,9 +176,11 @@ function LoginContent() {
     <div className="w-full max-w-md">
       <div className="rounded-2xl bg-slate-900 border border-slate-800 p-8 shadow-xl flex flex-col items-center">
         <div className="mb-6">
-          <div className="h-16 w-16 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xl font-bold border border-slate-700 shadow-md">
-            AS
-          </div>
+          <img
+            src="/official-logo.png"
+            alt="Asali Swad Logo"
+            className="h-16 w-16 rounded-full object-cover border border-slate-700 shadow-md"
+          />
         </div>
 
         <div className="text-center mb-8">
